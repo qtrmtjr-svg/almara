@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const ADMIN_HASH = '7c4ef8b7e0b8b6a8e776f5161acc3a323673a7f13edca8386aeb74137214b671';
+const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
 const TOKEN_SECRET = ADMIN_HASH + '_mbank_secret';
 const visitors = {};
 const orders = [];
