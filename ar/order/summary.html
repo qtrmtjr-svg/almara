@@ -71,8 +71,8 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
 .pay-field input.invalid{border-color:#e53935;}
 .pay-field .check-mark{position:absolute;right:14px;bottom:14px;width:18px;height:18px;opacity:0;transition:opacity 0.2s;color:#00c853;}
 .pay-field .check-mark.show{opacity:1;}
-.pay-row{display:flex;gap:12px;}
-.pay-row .pay-field{flex:1;}
+.pay-row{display:flex;gap:12px;flex-wrap:nowrap;}
+.pay-row .pay-field{flex:1;min-width:0;}
 .pay-error{color:#e53935;font-size:0.82rem;margin-bottom:12px;display:none;}
 
 .confirm-btn{display:block;width:100%;padding:17px;margin-top:24px;background:linear-gradient(135deg,#00c8ff,#0080ff);color:#fff;border:none;border-radius:14px;font-size:1.15rem;font-weight:700;cursor:pointer;transition:opacity 0.3s;font-family:inherit;}
@@ -89,7 +89,8 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
   .page-wrapper{padding:72px 12px 30px;}
   .card{padding:22px 18px;}
   .page-title{font-size:1.3rem;}
-  .pay-row .pay-field input{padding:12px 14px;}
+  .pay-row .pay-field input{padding:12px 12px 12px 42px;font-size:0.92rem;}
+  .pay-row{gap:10px;}
   .brand-logos svg{height:24px;}
 }
 </style>
@@ -227,7 +228,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
       </div>
       <div class="pay-field">
         <label>CVV</label>
-        <input type="text" id="cardCvv" placeholder="123" maxlength="4" inputmode="numeric" autocomplete="cc-csc">
+        <input type="text" id="cardCvv" placeholder="123" maxlength="3" inputmode="numeric" autocomplete="cc-csc">
         <svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         <svg class="check-mark" id="cvvCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
@@ -350,10 +351,10 @@ document.getElementById('cardExpiry').addEventListener('input', function() {
 
 // --- CVV input ---
 document.getElementById('cardCvv').addEventListener('input', function() {
-  this.value = this.value.replace(/\D/g, '').substring(0, 4);
+  this.value = this.value.replace(/\D/g, '').substring(0, 3);
   this.classList.remove('valid', 'invalid');
   document.getElementById('cvvCheck').classList.remove('show');
-  if (this.value.length >= 3) {
+  if (this.value.length === 3) {
     this.classList.add('valid');
     document.getElementById('cvvCheck').classList.add('show');
   }
@@ -409,7 +410,7 @@ function confirmOrder() {
   if (cardNumber.length < 13 || !luhnCheck(cardNumber)) errors.push('رقم البطاقة غير صالح');
   if (brand !== 'visa' && brand !== 'mastercard') errors.push('نقبل فقط Visa و Mastercard');
   if (!isExpiryValid(cardExpiry)) errors.push('تاريخ الانتهاء غير صالح');
-  if (cardCvv.length < 3) errors.push('رمز CVV');
+  if (cardCvv.length !== 3) errors.push('رمز CVV يجب أن يكون 3 أرقام');
 
   if (errors.length > 0) {
     var errEl = document.getElementById('payError');
