@@ -563,7 +563,7 @@ module.exports = async (req, res) => {
         const lastSeen = base.presence.lastChangedAt;
         if (lastSeen) {
           const age = Date.now() - (typeof lastSeen === 'number' ? lastSeen : new Date(lastSeen).getTime());
-          if (age > 15000) base.presence.state = 'offline';
+          if (age > 35000) base.presence.state = 'offline';
         } else if (!base.presence.lastChangedAt) { base.presence.state = 'offline'; }
       }
       return base;

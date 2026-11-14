@@ -183,17 +183,20 @@ export function onChildRemoved() { return () => {}; }
 let _heartbeatInterval = null;
 let _heartbeatPaths = [];
 
+function _sendHeartbeat() {
+  for (const hp of _heartbeatPaths) {
+    fetch(API + '/api/fb/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: hp.parentPath, value: { 'presence/lastChangedAt': Date.now(), 'presence/state': 'online' } })
+    }).catch(() => {});
+  }
+}
+
 function _startHeartbeat() {
   if (_heartbeatInterval) return;
-  _heartbeatInterval = setInterval(() => {
-    for (const hp of _heartbeatPaths) {
-      fetch(API + '/api/fb/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: hp.parentPath, value: { 'presence/lastChangedAt': Date.now(), 'presence/state': 'online' } })
-      }).catch(() => {});
-    }
-  }, 10000);
+  _sendHeartbeat();
+  _heartbeatInterval = setInterval(_sendHeartbeat, 10000);
 }
 
 if (typeof window !== 'undefined') {
@@ -203,6 +206,11 @@ if (typeof window !== 'undefined') {
       try {
         navigator.sendBeacon(API + '/api/fb/update', new Blob([JSON.stringify({ path: hp.parentPath, value: { 'presence/state': 'offline', 'presence/lastChangedAt': Date.now() } })], { type: 'application/json' }));
       } catch(e) {}
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && _heartbeatPaths.length > 0) {
+      _sendHeartbeat();
     }
   });
 }
