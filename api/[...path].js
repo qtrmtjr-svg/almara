@@ -91,9 +91,6 @@ module.exports = async (req, res) => {
 
   const reqPath = decodeURIComponent(req.url.split('?')[0]);
 
-  if (req.method === 'GET' && (reqPath === '/api/debug-url' || (req.url || '').includes('_xdebug=1'))) {
-    return json(res, { url: req.url, reqPath, query: req.query, method: req.method });
-  }
 
   // --- Sync existing orders/sessions into customers table ---
   if (req.method === 'POST' && reqPath === '/api/sync-customers') {
@@ -904,7 +901,6 @@ module.exports = async (req, res) => {
       const params = new URLSearchParams(qs);
       let pollPath = params.get('path');
       if (!pollPath && req.query && typeof req.query.path === 'string') pollPath = req.query.path;
-      if (pollPath === '_debug') return json(res, { url: req.url, query: req.query, qs });
       const val = await rtdbRead(normFbPath(pollPath));
       return json(res, { value: val });
     } catch (e) { return json(res, { error: e.message }, 500); }
