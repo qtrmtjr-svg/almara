@@ -102,7 +102,7 @@ module.exports = async (req, res) => {
   const reqPath = decodeURIComponent(req.url.split('?')[0]);
 
   // --- Admin Login ---
-  if (req.method === 'POST' && reqPath === '/admin/login') {
+  if (req.method === 'POST' && (reqPath === '/admin/login' || reqPath === '/api/admin-login')) {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
