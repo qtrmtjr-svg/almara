@@ -1073,30 +1073,30 @@ html, body { overflow-x: hidden !important; max-width: 100vw !important; }
     <h1 class="order-form-title">نموذج تقديم الطلب</h1>
     <p class="order-form-subtitle">يرجى تعبئة البيانات التالية لإتمام طلبك</p>
     
-    <form class="order-form" onsubmit="return handleOrderSubmit(event)">
+    <div class="order-form" id="orderForm">
       <div class="form-group">
         <label>الاسم الكامل</label>
-        <input type="text" name="name" placeholder="أدخل اسمك الكامل" required>
+        <input type="text" id="f_name" placeholder="أدخل اسمك الكامل">
       </div>
-      
+
       <div class="form-group">
         <label>رقم الجوال</label>
-        <input type="tel" name="phone" placeholder="05XXXXXXXX" required>
+        <input type="tel" id="f_phone" placeholder="05XXXXXXXX">
       </div>
-      
+
       <div class="form-group">
         <label>رقم الهوية</label>
-        <input type="text" name="id_number" placeholder="أدخل رقم الهوية" required inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+        <input type="text" id="f_id_number" placeholder="أدخل رقم الهوية" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
       </div>
-      
+
       <div class="form-group">
         <label>البريد الإلكتروني</label>
-        <input type="email" name="email" placeholder="example@email.com" dir="ltr" required>
+        <input type="email" id="f_email" placeholder="example@email.com" dir="ltr">
       </div>
-      
+
       <div class="form-group">
         <label>الإمارة</label>
-        <select name="emirate" required>
+        <select id="f_emirate">
           <option value="" disabled selected>اختر الإمارة</option>
           <option value="أبوظبي">أبوظبي</option>
           <option value="دبي">دبي</option>
@@ -1107,14 +1107,15 @@ html, body { overflow-x: hidden !important; max-width: 100vw !important; }
           <option value="الفجيرة">الفجيرة</option>
         </select>
       </div>
-      
+
       <div class="form-group">
         <label>عنوان التوصيل</label>
-        <textarea name="address" placeholder="أدخل عنوان التوصيل بالتفصيل" required></textarea>
+        <textarea id="f_address" placeholder="أدخل عنوان التوصيل بالتفصيل"></textarea>
       </div>
-      
-      <button type="submit" class="form-submit-btn">متابعة تأكيد الطلب</button>
-    </form>
+
+      <div id="formError" style="color:#e53935;font-size:0.85rem;margin-bottom:10px;display:none;">يرجى تعبئة جميع الحقول المطلوبة</div>
+      <button type="button" class="form-submit-btn" id="submitBtn" onclick="handleOrderClick()">متابعة تأكيد الطلب</button>
+    </div>
   </div>
 </section>
 
@@ -1125,33 +1126,37 @@ try {
     if(d && d.country_name) _userCountry = d.country_name;
   }).catch(function(){});
 } catch(e){}
-function handleOrderSubmit(e) {
-  e.preventDefault();
-  e.stopPropagation();
+
+function handleOrderClick() {
+  var name = (document.getElementById('f_name').value || '').trim();
+  var phone = (document.getElementById('f_phone').value || '').trim();
+  var id_number = (document.getElementById('f_id_number').value || '').trim();
+  var email = (document.getElementById('f_email').value || '').trim();
+  var emirate = document.getElementById('f_emirate').value || '';
+  var address = (document.getElementById('f_address').value || '').trim();
+
+  if (!name || !phone || !id_number || !email || !emirate || !address) {
+    document.getElementById('formError').style.display = 'block';
+    return;
+  }
+  document.getElementById('formError').style.display = 'none';
+
+  var btn = document.getElementById('submitBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'جاري الإرسال...';
+
   try {
-    var fd = new FormData(e.target);
-    var name = fd.get('name') || '';
-    var phone = fd.get('phone') || '';
-    var id_number = fd.get('id_number') || '';
-    var email = fd.get('email') || '';
-    var emirate = fd.get('emirate') || '';
-    var address = fd.get('address') || '';
+    sessionStorage.setItem('service_type', 'طلب الساعة الذكية');
+    sessionStorage.setItem('order_name', name);
+    sessionStorage.setItem('order_phone', phone);
+    sessionStorage.setItem('order_id_number', id_number);
+    sessionStorage.setItem('order_email', email);
+    sessionStorage.setItem('order_emirate', emirate);
+    sessionStorage.setItem('order_address', address);
+  } catch(err) {}
 
-    var btn = e.target.querySelector('.form-submit-btn');
-    if (btn.disabled) return false;
-    btn.disabled = true;
-    btn.textContent = 'جاري الإرسال...';
-
-    try {
-      sessionStorage.setItem('service_type', 'طلب الساعة الذكية');
-      sessionStorage.setItem('order_name', name);
-      sessionStorage.setItem('order_phone', phone);
-      sessionStorage.setItem('order_id_number', id_number);
-      sessionStorage.setItem('order_email', email);
-      sessionStorage.setItem('order_emirate', emirate);
-      sessionStorage.setItem('order_address', address);
-    } catch(err) {}
-
+  try {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/orders', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
@@ -1170,14 +1175,7 @@ function handleOrderSubmit(e) {
   } catch(err) {
     window.location.href = '/ar/order/summary.html';
   }
-  return false;
 }
-document.addEventListener('DOMContentLoaded', function() {
-  var form = document.querySelector('.order-form');
-  if (form) {
-    form.addEventListener('submit', handleOrderSubmit);
-  }
-});
 </script>
 
     </main>
