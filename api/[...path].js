@@ -918,7 +918,7 @@ module.exports = async (req, res) => {
     try {
       const data = JSON.parse(body);
       await rtdbSet(data.path, data.value);
-      return json(res, { ok: true, _v: 2 });
+      return json(res, { ok: true });
     } catch (e) { return json(res, { error: e.message }, 500); }
   }
 
