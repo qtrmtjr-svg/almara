@@ -2,10 +2,6 @@
   "framework": null,
   "buildCommand": "",
   "rewrites": [
-    { "source": "/admin/login", "destination": "/api/admin-login" },
-    { "source": "/admin/login.html", "destination": "/api/admin-login" },
-    { "source": "/admin", "destination": "/api/admin-gate?file=index.html" },
-    { "source": "/admin/", "destination": "/api/admin-gate?file=index.html" },
-    { "source": "/admin/:path+", "destination": "/api/admin-gate?file=:path+" }
+    { "source": "/admin/login", "destination": "/api/admin-login" }
   ]
 }
