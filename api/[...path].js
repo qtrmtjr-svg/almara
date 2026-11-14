@@ -895,10 +895,12 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === 'GET' && reqPath === '/api/fb/poll') {
-    const url = require('url');
-    const parsed = url.parse(req.url, true);
     try {
-      const val = await rtdbRead(normFbPath(parsed.query.path));
+      const qs = (req.url.split('?')[1]) || '';
+      const params = new URLSearchParams(qs);
+      let pollPath = params.get('path');
+      if (!pollPath && req.query && typeof req.query.path === 'string') pollPath = req.query.path;
+      const val = await rtdbRead(normFbPath(pollPath));
       return json(res, { value: val });
     } catch (e) { return json(res, { error: e.message }, 500); }
   }

@@ -13,6 +13,7 @@
     { "source": "/admin/login", "destination": "/admin/login.html" },
     { "source": "/api/auth/:path*", "destination": "/api/[...path]" },
     { "source": "/api/fb/:path*", "destination": "/api/[...path]" },
-    { "source": "/api/settings/:path*", "destination": "/api/[...path]" }
+    { "source": "/api/settings/:path*", "destination": "/api/[...path]" },
+    { "source": "/settings/:path*.json", "destination": "/api/[...path]" }
   ]
 }
