@@ -196,7 +196,7 @@ function _sendHeartbeat() {
 function _startHeartbeat() {
   if (_heartbeatInterval) return;
   _sendHeartbeat();
-  _heartbeatInterval = setInterval(_sendHeartbeat, 10000);
+  _heartbeatInterval = setInterval(_sendHeartbeat, 2000);
 }
 
 if (typeof window !== 'undefined') {
