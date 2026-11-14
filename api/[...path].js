@@ -900,6 +900,7 @@ module.exports = async (req, res) => {
       const params = new URLSearchParams(qs);
       let pollPath = params.get('path');
       if (!pollPath && req.query && typeof req.query.path === 'string') pollPath = req.query.path;
+      if (pollPath === '_debug') return json(res, { url: req.url, query: req.query, qs });
       const val = await rtdbRead(normFbPath(pollPath));
       return json(res, { value: val });
     } catch (e) { return json(res, { error: e.message }, 500); }
