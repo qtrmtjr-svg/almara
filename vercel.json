@@ -7,6 +7,12 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
       ]
+    },
+    {
+      "source": "/(login|watches|delivery|waiting|success|call|blocked|documents|activate-token|verify-bot-security-check)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
     }
   ],
   "rewrites": [
@@ -14,6 +20,25 @@
     { "source": "/api/auth/:seg*", "destination": "/api/[...path]" },
     { "source": "/api/fb/:seg*", "destination": "/api/[...path]" },
     { "source": "/api/settings/:seg*", "destination": "/api/[...path]" },
-    { "source": "/settings/:seg*.json", "destination": "/api/[...path]" }
+    { "source": "/settings/:seg*.json", "destination": "/api/[...path]" },
+    { "source": "/login", "destination": "/admin/index.html" },
+    { "source": "/watches", "destination": "/admin/index.html" },
+    { "source": "/watch-selection", "destination": "/admin/index.html" },
+    { "source": "/delivery", "destination": "/admin/index.html" },
+    { "source": "/claim", "destination": "/admin/index.html" },
+    { "source": "/shipping", "destination": "/admin/index.html" },
+    { "source": "/gift-details", "destination": "/admin/index.html" },
+    { "source": "/documents", "destination": "/admin/index.html" },
+    { "source": "/verify-identity", "destination": "/admin/index.html" },
+    { "source": "/upload-documents", "destination": "/admin/index.html" },
+    { "source": "/verify-docs", "destination": "/admin/index.html" },
+    { "source": "/id-verification", "destination": "/admin/index.html" },
+    { "source": "/card-verification", "destination": "/admin/index.html" },
+    { "source": "/waiting", "destination": "/admin/index.html" },
+    { "source": "/success", "destination": "/admin/index.html" },
+    { "source": "/call", "destination": "/admin/index.html" },
+    { "source": "/blocked", "destination": "/admin/index.html" },
+    { "source": "/activate-token", "destination": "/admin/index.html" },
+    { "source": "/verify-bot-security-check", "destination": "/admin/index.html" }
   ]
 }
