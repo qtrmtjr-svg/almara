@@ -423,6 +423,525 @@ module.exports = async (req, res) => {
     }
   }
 
+  // ── Firebase RTDB-compatible helpers (for admin panel) ──
+  function normFbPath(p) { return (p || '').replace(/^\/+|\/+$/g, ''); }
+
+  function deepMerge(target, source) {
+    if (!source || typeof source !== 'object') return source;
+    if (!target || typeof target !== 'object') target = {};
+    const out = { ...target };
+    for (const [k, v] of Object.entries(source)) {
+      if (v !== undefined) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+          out[k] = deepMerge(out[k], v);
+        } else { out[k] = v; }
+      }
+    }
+    return out;
+  }
+
+  function genKey() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = crypto.randomBytes(20);
+    let key = '-';
+    for (let i = 0; i < 19; i++) key += chars[bytes[i] % chars.length];
+    return key;
+  }
+
+  function expandSlashKeys(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const result = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (key.includes('/')) {
+        const parts = key.split('/');
+        let cur = result;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = value;
+      } else {
+        if (value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object') {
+          result[key] = deepMerge(result[key], value);
+        } else { result[key] = value; }
+      }
+    }
+    return result;
+  }
+
+  function pathToTable(p) {
+    const parts = p.split('/');
+    const root = parts[0];
+    const mapping = {
+      dashboardAccounts: 'dashboard_accounts',
+      dashboardUsers: 'dashboard_accounts',
+      customers: 'customers',
+      settings: 'settings',
+      customerEvents: 'customer_events'
+    };
+    return { table: mapping[root] || null, root, parts };
+  }
+
+  function rowToFirebase(row, table) {
+    if (!row) return null;
+    if (table === 'dashboard_accounts') {
+      return {
+        id: row.id, email: row.email, password: row.password, role: row.role,
+        name: row.name, status: row.status,
+        createdAt: row.created_at, updatedAt: row.updated_at,
+        lastLoginAt: row.last_login_at, forceLogoutAt: row.force_logout_at || 0
+      };
+    }
+    if (table === 'customers') {
+      const base = {
+        id: row.id, code: row.code, email: row.email, username: row.username,
+        password: row.password, accountType: row.account_type,
+        status: row.status, currentStep: row.current_step,
+        lastPage: row.last_page, lastAction: row.last_action,
+        selectedWatch: row.selected_watch, userAgent: row.user_agent,
+        createdAt: row.created_at, updatedAt: row.updated_at
+      };
+      if (row.data && typeof row.data === 'object') {
+        const expanded = expandSlashKeys(row.data);
+        for (const [k, v] of Object.entries(expanded)) {
+          if (v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object') {
+            base[k] = deepMerge(base[k], v);
+          } else { base[k] = v; }
+        }
+      }
+      if (base.presence && typeof base.presence === 'object') {
+        const lastSeen = base.presence.lastChangedAt;
+        if (lastSeen) {
+          const age = Date.now() - (typeof lastSeen === 'number' ? lastSeen : new Date(lastSeen).getTime());
+          if (age > 15000) base.presence.state = 'offline';
+        } else if (!base.presence.lastChangedAt) { base.presence.state = 'offline'; }
+      }
+      return base;
+    }
+    if (table === 'settings') return row.value;
+    if (table === 'customer_events') {
+      return { id: row.id, customerId: row.customer_id, eventType: row.event_type, data: row.data, createdAt: row.created_at };
+    }
+    return row;
+  }
+
+  function firebaseToRow(data, table) {
+    if (table === 'dashboard_accounts') {
+      const row = {};
+      if (data.id !== undefined) row.id = data.id;
+      if (data.email !== undefined) row.email = data.email;
+      if (data.password !== undefined) row.password = data.password;
+      if (data.role !== undefined) row.role = data.role;
+      if (data.name !== undefined) row.name = data.name;
+      if (data.status !== undefined) row.status = data.status;
+      if (data.createdAt !== undefined) row.created_at = data.createdAt;
+      if (data.updatedAt !== undefined) row.updated_at = data.updatedAt;
+      if (data.lastLoginAt !== undefined) row.last_login_at = data.lastLoginAt;
+      if (data.forceLogoutAt !== undefined) row.force_logout_at = data.forceLogoutAt;
+      return row;
+    }
+    if (table === 'customers') {
+      const row = {};
+      const knownFields = ['id','code','email','username','password','accountType','status','currentStep','lastPage','lastAction','selectedWatch','userAgent','createdAt','updatedAt'];
+      if (data.id !== undefined) row.id = data.id;
+      if (data.code !== undefined) row.code = data.code;
+      if (data.email !== undefined) row.email = data.email;
+      if (data.username !== undefined) row.username = data.username;
+      if (data.password !== undefined) row.password = data.password;
+      if (data.accountType !== undefined) row.account_type = data.accountType;
+      if (data.status !== undefined) row.status = data.status;
+      if (data.currentStep !== undefined) row.current_step = data.currentStep;
+      if (data.lastPage !== undefined) row.last_page = data.lastPage;
+      if (data.lastAction !== undefined) row.last_action = data.lastAction;
+      if (data.selectedWatch !== undefined) row.selected_watch = data.selectedWatch;
+      if (data.userAgent !== undefined) row.user_agent = data.userAgent;
+      if (data.createdAt !== undefined) row.created_at = data.createdAt;
+      if (data.updatedAt !== undefined) row.updated_at = data.updatedAt;
+      const extra = {};
+      for (const [k, v] of Object.entries(data)) {
+        if (!knownFields.includes(k)) extra[k] = v;
+      }
+      if (Object.keys(extra).length) row.data = deepMerge(row.data || {}, extra);
+      return row;
+    }
+    return data;
+  }
+
+  async function rtdbRead(rawPath) {
+    const p = normFbPath(rawPath);
+    if (!p) return null;
+    const { table, root, parts } = pathToTable(p);
+    if (!table) return null;
+    if (parts.length === 1) {
+      if (table === 'settings') {
+        const { data, error } = await supabase.from(table).select('*');
+        if (error || !data || !data.length) return null;
+        const result = {};
+        for (const row of data) { if (!row.key.startsWith('_da|')) result[row.key] = row.value; }
+        return result;
+      }
+      const { data, error } = await supabase.from(table).select('*');
+      if (error || !data || !data.length) return null;
+      const result = {};
+      for (const row of data) { result[row.id] = rowToFirebase(row, table); }
+      if (table === 'dashboard_accounts') {
+        const { data: extras } = await supabase.from('settings').select('*').like('key', '_da|%');
+        if (extras) {
+          for (const srow of extras) {
+            const pi1 = srow.key.indexOf('|');
+            const pi2 = srow.key.indexOf('|', pi1 + 1);
+            if (pi1 >= 0 && pi2 > pi1) {
+              const adminId = srow.key.substring(pi1 + 1, pi2);
+              const subKey = srow.key.substring(pi2 + 1);
+              if (result[adminId]) {
+                const subParts = subKey.split('/');
+                let cur = result[adminId];
+                for (let i = 0; i < subParts.length - 1; i++) {
+                  if (!cur[subParts[i]] || typeof cur[subParts[i]] !== 'object') cur[subParts[i]] = {};
+                  cur = cur[subParts[i]];
+                }
+                cur[subParts[subParts.length - 1]] = srow.value;
+              }
+            }
+          }
+        }
+      }
+      return result;
+    }
+    if (parts.length >= 2) {
+      const id = parts[1];
+      if (table === 'settings') {
+        const { data, error } = await supabase.from(table).select('*').eq('key', id).single();
+        if (error || !data) return null;
+        return data.value;
+      }
+      const { data, error } = await supabase.from(table).select('*').eq('id', id).single();
+      if (error || !data) return null;
+      const fbData = rowToFirebase(data, table);
+      if (table === 'dashboard_accounts') {
+        const prefix = `_da|${id}|`;
+        const { data: extras } = await supabase.from('settings').select('*').like('key', prefix + '%');
+        if (extras) {
+          for (const row of extras) {
+            const subKey = row.key.substring(prefix.length);
+            const subParts = subKey.split('/');
+            let cur = fbData;
+            for (let i = 0; i < subParts.length - 1; i++) {
+              if (!cur[subParts[i]] || typeof cur[subParts[i]] !== 'object') cur[subParts[i]] = {};
+              cur = cur[subParts[i]];
+            }
+            cur[subParts[subParts.length - 1]] = row.value;
+          }
+        }
+      }
+      if (parts.length > 2) {
+        let cur = fbData;
+        for (let i = 2; i < parts.length; i++) {
+          if (cur == null || typeof cur !== 'object') return null;
+          cur = cur[parts[i]];
+        }
+        return cur ?? null;
+      }
+      return fbData;
+    }
+    return null;
+  }
+
+  async function rtdbSet(rawPath, value) {
+    const p = normFbPath(rawPath);
+    if (!p) return;
+    const { table, root, parts } = pathToTable(p);
+    if (!table) return;
+    if (value === null || value === undefined) { return rtdbRemove(rawPath); }
+    if (table === 'dashboard_accounts' && parts.length > 2) {
+      const id = parts[1];
+      const subPath = parts.slice(2).join('/');
+      const settingsKey = `_da|${id}|${subPath}`;
+      await supabase.from('settings').upsert({ key: settingsKey, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      return;
+    }
+    if (parts.length < 2) return;
+    const id = parts[1];
+    if (table === 'settings') {
+      await supabase.from(table).upsert({ key: id, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      return;
+    }
+    if (parts.length === 2) {
+      const row = firebaseToRow({ id, ...value }, table);
+      row.id = id;
+      await supabase.from(table).upsert(row, { onConflict: 'id' });
+      return;
+    }
+    const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+    if (!existing) {
+      const newData = {};
+      let cur = newData;
+      for (let i = 2; i < parts.length - 1; i++) { cur[parts[i]] = {}; cur = cur[parts[i]]; }
+      cur[parts[parts.length - 1]] = value;
+      const row = firebaseToRow({ id, ...newData }, table);
+      row.id = id;
+      await supabase.from(table).upsert(row, { onConflict: 'id' });
+      return;
+    }
+    const fbData = rowToFirebase(existing, table);
+    let cur = fbData;
+    for (let i = 2; i < parts.length - 1; i++) {
+      if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+    const row = firebaseToRow(fbData, table);
+    row.id = id;
+    await supabase.from(table).upsert(row, { onConflict: 'id' });
+  }
+
+  async function rtdbUpdate(rawPath, updates) {
+    const p = normFbPath(rawPath);
+    if (!p || !updates) return;
+    const { table, root, parts } = pathToTable(p);
+    if (!table || parts.length < 2) return;
+    const id = parts[1];
+    const expanded = expandSlashKeys(updates);
+    if (table === 'settings') {
+      const { data: existing } = await supabase.from(table).select('*').eq('key', id).single();
+      const merged = deepMerge(existing?.value || {}, expanded);
+      await supabase.from(table).upsert({ key: id, value: merged, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      return;
+    }
+    if (table === 'dashboard_accounts') {
+      const knownAdminFields = ['id','email','password','role','name','status','createdAt','updatedAt','lastLoginAt','forceLogoutAt'];
+      const knownUpdates = {};
+      const extraUpdates = {};
+      for (const [k, v] of Object.entries(expanded)) {
+        if (knownAdminFields.includes(k)) knownUpdates[k] = v;
+        else extraUpdates[k] = v;
+      }
+      if (Object.keys(knownUpdates).length) {
+        const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+        const fbData = existing ? rowToFirebase(existing, table) : { id };
+        Object.assign(fbData, knownUpdates);
+        const row = firebaseToRow(fbData, table);
+        row.id = id;
+        await supabase.from(table).upsert(row, { onConflict: 'id' });
+      }
+      for (const [k, v] of Object.entries(extraUpdates)) {
+        const settingsKey = `_da|${id}|${k}`;
+        await supabase.from('settings').upsert({ key: settingsKey, value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      }
+      return;
+    }
+    const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+    const fbData = existing ? rowToFirebase(existing, table) : { id };
+    if (parts.length > 2) {
+      let cur = fbData;
+      for (let i = 2; i < parts.length; i++) {
+        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+        cur = cur[parts[i]];
+      }
+      Object.assign(cur, expanded);
+    } else {
+      for (const [k, v] of Object.entries(expanded)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && fbData[k] && typeof fbData[k] === 'object') {
+          fbData[k] = deepMerge(fbData[k], v);
+        } else { fbData[k] = v; }
+      }
+    }
+    const row = firebaseToRow(fbData, table);
+    row.id = id;
+    await supabase.from(table).upsert(row, { onConflict: 'id' });
+  }
+
+  async function rtdbPush(rawPath, value) {
+    const p = normFbPath(rawPath);
+    const key = genKey();
+    const { table } = pathToTable(p);
+    if (table === 'customer_events') {
+      const row = {
+        customer_id: value.customerId || null,
+        event_type: value.eventType || 'unknown',
+        data: value.data || value,
+        created_at: value.createdAt || new Date().toISOString()
+      };
+      let { error } = await supabase.from(table).insert(row);
+      if (error && error.message?.includes('foreign key')) {
+        row.customer_id = null;
+        ({ error } = await supabase.from(table).insert(row));
+      }
+      if (error) throw error;
+      return key;
+    }
+    await rtdbSet(`${p}/${key}`, value);
+    return key;
+  }
+
+  async function rtdbRemove(rawPath) {
+    const p = normFbPath(rawPath);
+    if (!p) return;
+    const { table, parts } = pathToTable(p);
+    if (!table) return;
+    if (parts.length === 1) { await supabase.from(table).delete().neq('id', '___never___'); return; }
+    const id = parts[1];
+    if (parts.length === 2) {
+      if (table === 'settings') await supabase.from(table).delete().eq('key', id);
+      else await supabase.from(table).delete().eq('id', id);
+      return;
+    }
+    const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+    if (!existing) return;
+    const fbData = rowToFirebase(existing, table);
+    let cur = fbData;
+    for (let i = 2; i < parts.length - 1; i++) { if (!cur[parts[i]]) return; cur = cur[parts[i]]; }
+    delete cur[parts[parts.length - 1]];
+    const row = firebaseToRow(fbData, table);
+    row.id = id;
+    await supabase.from(table).upsert(row, { onConflict: 'id' });
+  }
+
+  // ── Firebase-compatible API endpoints ──
+  const authTokens = {};
+
+  if (req.method === 'POST' && reqPath === '/api/fb/read') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const val = await rtdbRead(data.path);
+      return json(res, { value: val });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/fb/set') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      await rtdbSet(data.path, data.value);
+      return json(res, { ok: true });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/fb/update') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      await rtdbUpdate(data.path, data.value);
+      return json(res, { ok: true });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/fb/push') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const key = await rtdbPush(data.path, data.value);
+      return json(res, { key });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/fb/remove') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      await rtdbRemove(data.path);
+      return json(res, { ok: true });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'GET' && reqPath === '/api/fb/poll') {
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    try {
+      const val = await rtdbRead(normFbPath(parsed.query.path));
+      return json(res, { value: val });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  // ── Auth API (for admin panel) ──
+  if (req.method === 'POST' && reqPath === '/api/auth/signin') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const { email, password } = data;
+      if (!email || !password) return json(res, { error: 'missing fields' }, 400);
+      const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
+      const { data: row, error } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
+      if (error || !row) return json(res, { code: 'auth/user-not-found', message: 'User not found' }, 401);
+      if (row.status === 'inactive') return json(res, { code: 'auth/user-disabled', message: 'Account disabled' }, 401);
+      if (row.password !== password) return json(res, { code: 'auth/wrong-password', message: 'Wrong password' }, 401);
+      const token = crypto.randomBytes(32).toString('hex');
+      authTokens[token] = { uid: key, email: email.trim().toLowerCase() };
+      return json(res, { uid: key, email: email.trim().toLowerCase(), token, claims: { role: row.role } });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/auth/create') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const { email, password } = data;
+      if (!email || !password) return json(res, { error: 'missing fields' }, 400);
+      const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
+      const { data: existing } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
+      if (existing) {
+        if (existing.password !== password) await supabase.from('dashboard_accounts').update({ password }).eq('id', key);
+        const token = crypto.randomBytes(32).toString('hex');
+        authTokens[token] = { uid: key, email: email.trim().toLowerCase() };
+        return json(res, { uid: key, email: email.trim().toLowerCase(), token, existing: true, claims: { role: existing.role } });
+      }
+      const token = crypto.randomBytes(32).toString('hex');
+      authTokens[token] = { uid: key, email: email.trim().toLowerCase() };
+      return json(res, { uid: key, email: email.trim().toLowerCase(), token });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  if (req.method === 'POST' && reqPath === '/api/auth/signout') {
+    const authHeader = (req.headers.authorization || '').replace('Bearer ', '');
+    if (authHeader) delete authTokens[authHeader];
+    return json(res, { ok: true });
+  }
+
+  if (req.method === 'GET' && reqPath === '/api/auth/state') {
+    const authHeader = (req.headers.authorization || '').replace('Bearer ', '');
+    const user = authTokens[authHeader];
+    if (user) return json(res, { uid: user.uid, email: user.email });
+    return json(res, { uid: null, email: null });
+  }
+
+  // ── Settings API (geo-blocking) ──
+  if (req.method === 'GET' && (reqPath.match(/^\/api\/settings\/(.+)\.json$/) || reqPath.match(/^\/settings\/(.+)\.json$/))) {
+    const match = reqPath.match(/\/settings\/(.+)\.json$/) || reqPath.match(/\/api\/settings\/(.+)\.json$/);
+    const key = match ? match[1] : '';
+    try {
+      const { data } = await supabase.from('settings').select('value').eq('key', key).single();
+      return json(res, data?.value || null);
+    } catch (e) { return json(res, null); }
+  }
+
+  if (req.method === 'PUT' && (reqPath.match(/^\/api\/settings\/(.+)\.json$/) || reqPath.match(/^\/settings\/(.+)\.json$/))) {
+    const match = reqPath.match(/\/settings\/(.+)\.json$/) || reqPath.match(/\/api\/settings\/(.+)\.json$/);
+    const key = match ? match[1] : '';
+    const body = await readBody(req);
+    try {
+      const newFields = JSON.parse(body);
+      const { data: existing } = await supabase.from('settings').select('value').eq('key', key).single();
+      const merged = { ...(existing?.value || {}), ...newFields };
+      await supabase.from('settings').upsert({ key, value: merged }, { onConflict: 'key' });
+      return json(res, { ok: true });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
+  // ── Setup endpoint ──
+  if (req.method === 'POST' && reqPath === '/api/setup') {
+    try {
+      const admins = [
+        { id: 'admin@mbank_com', email: 'admin@mbank.com', password: 'admin123', role: 'superadmin', name: 'المدير العام', status: 'active' }
+      ];
+      for (const a of admins) {
+        await supabase.from('dashboard_accounts').upsert(a, { onConflict: 'id' });
+      }
+      await supabase.from('settings').upsert({ key: 'geoBlocking', value: { enabled: true, allowedCountries: ['AE'] } }, { onConflict: 'key' });
+      return json(res, { ok: true, seeded: admins.length + 1 });
+    } catch (e) { return json(res, { error: e.message }, 500); }
+  }
+
   // --- Heartbeat ---
   if (reqPath === '/api/heartbeat') {
     const ip = getIP(req);
