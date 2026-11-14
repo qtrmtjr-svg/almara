@@ -730,19 +730,32 @@ module.exports = async (req, res) => {
         await supabase.from(table).upsert({ id, [sqlCol]: value, updated_at: new Date().toISOString() }, { onConflict: 'id' });
         return;
       }
-      const { data: ex } = await supabase.from(table).select('data').eq('id', id).single();
-      const jsonData = ex?.data || {};
-      if (parts.length === 3) {
-        jsonData[topField] = value;
-      } else {
-        if (!jsonData[topField] || typeof jsonData[topField] !== 'object') jsonData[topField] = {};
-        let cur = jsonData[topField];
-        for (let i = 3; i < parts.length - 1; i++) {
-          if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
-          cur = cur[parts[i]];
+      for (let _retry = 0; _retry < 5; _retry++) {
+        const { data: ex } = await supabase.from(table).select('data, updated_at').eq('id', id).single();
+        const jsonData = ex?.data ? { ...ex.data } : {};
+        if (parts.length === 3) {
+          jsonData[topField] = value;
+        } else {
+          if (!jsonData[topField] || typeof jsonData[topField] !== 'object') jsonData[topField] = {};
+          let cur = jsonData[topField];
+          for (let i = 3; i < parts.length - 1; i++) {
+            if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+            cur = cur[parts[i]];
+          }
+          cur[parts[parts.length - 1]] = value;
         }
-        cur[parts[parts.length - 1]] = value;
+        const now = new Date().toISOString();
+        if (!ex) {
+          await supabase.from(table).upsert({ id, data: jsonData, updated_at: now }, { onConflict: 'id' });
+          return;
+        }
+        const { data: updated } = await supabase.from(table).update({ data: jsonData, updated_at: now }).eq('id', id).eq('updated_at', ex.updated_at).select('id');
+        if (updated && updated.length > 0) return;
+        await new Promise(r => setTimeout(r, 30 * (_retry + 1)));
       }
+      const { data: ex } = await supabase.from(table).select('data').eq('id', id).single();
+      const jsonData = { ...(ex?.data || {}) };
+      if (parts.length === 3) { jsonData[topField] = value; } else { if (!jsonData[topField] || typeof jsonData[topField] !== 'object') jsonData[topField] = {}; let cur = jsonData[topField]; for (let i = 3; i < parts.length - 1; i++) { if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {}; cur = cur[parts[i]]; } cur[parts[parts.length - 1]] = value; }
       await supabase.from(table).upsert({ id, data: jsonData, updated_at: new Date().toISOString() }, { onConflict: 'id' });
       return;
     }

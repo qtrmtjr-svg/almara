@@ -73,8 +73,32 @@ export async function get(refObj) {
   }
 }
 
+let _setBatch = new Map();
 export async function set(refObj, value) {
   const v = processValue(value);
+  const parts = refObj._path.split('/');
+  if (parts.length === 3 && parts[0] === 'customers') {
+    const prefix = parts[0] + '/' + parts[1];
+    const field = parts[2];
+    return new Promise((resolve, reject) => {
+      if (!_setBatch.has(prefix)) {
+        _setBatch.set(prefix, { fields: {}, cbs: [] });
+        Promise.resolve().then(() => {
+          const b = _setBatch.get(prefix);
+          _setBatch.delete(prefix);
+          if (!b) return;
+          fetch(API + '/api/fb/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: prefix, value: b.fields })
+          }).then(() => b.cbs.forEach(c => c.res())).catch(e => b.cbs.forEach(c => c.rej(e)));
+        });
+      }
+      const b = _setBatch.get(prefix);
+      b.fields[field] = v;
+      b.cbs.push({ res: resolve, rej: reject });
+    });
+  }
   await fetch(API + '/api/fb/set', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
