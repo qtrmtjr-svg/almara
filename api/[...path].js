@@ -91,6 +91,10 @@ module.exports = async (req, res) => {
 
   const reqPath = decodeURIComponent(req.url.split('?')[0]);
 
+  if (req.method === 'GET' && reqPath === '/api/debug-url') {
+    return json(res, { url: req.url, reqPath, query: req.query });
+  }
+
   // --- Sync existing orders/sessions into customers table ---
   if (req.method === 'POST' && reqPath === '/api/sync-customers') {
     const { data: orders } = await supabase.from('orders').select('*').order('id', { ascending: false });
