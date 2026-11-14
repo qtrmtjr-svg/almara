@@ -22,7 +22,6 @@
     }
   ],
   "rewrites": [
-    { "source": "/admin/login", "destination": "/admin/login.html" },
     { "source": "/api/auth/:seg*", "destination": "/api/[...path]" },
     { "source": "/api/fb/:seg*", "destination": "/api/[...path]" },
     { "source": "/api/settings/:seg*", "destination": "/api/[...path]" },
