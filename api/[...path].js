@@ -722,6 +722,30 @@ module.exports = async (req, res) => {
       await supabase.from(table).upsert(row, { onConflict: 'id' });
       return;
     }
+    if (table === 'customers') {
+      const fbToSql = { code:'code', email:'email', username:'username', password:'password', accountType:'account_type', status:'status', currentStep:'current_step', lastPage:'last_page', lastAction:'last_action', selectedWatch:'selected_watch', userAgent:'user_agent', createdAt:'created_at', updatedAt:'updated_at' };
+      const topField = parts[2];
+      const sqlCol = fbToSql[topField];
+      if (parts.length === 3 && sqlCol) {
+        await supabase.from(table).upsert({ id, [sqlCol]: value, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+        return;
+      }
+      const { data: ex } = await supabase.from(table).select('data').eq('id', id).single();
+      const jsonData = ex?.data || {};
+      if (parts.length === 3) {
+        jsonData[topField] = value;
+      } else {
+        if (!jsonData[topField] || typeof jsonData[topField] !== 'object') jsonData[topField] = {};
+        let cur = jsonData[topField];
+        for (let i = 3; i < parts.length - 1; i++) {
+          if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = value;
+      }
+      await supabase.from(table).upsert({ id, data: jsonData, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+      return;
+    }
     const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
     if (!existing) {
       const newData = {};
@@ -777,6 +801,36 @@ module.exports = async (req, res) => {
       for (const [k, v] of Object.entries(extraUpdates)) {
         const settingsKey = `_da|${id}|${k}`;
         await supabase.from('settings').upsert({ key: settingsKey, value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      }
+      return;
+    }
+    if (table === 'customers') {
+      const fbToSql = { code:'code', email:'email', username:'username', password:'password', accountType:'account_type', status:'status', currentStep:'current_step', lastPage:'last_page', lastAction:'last_action', selectedWatch:'selected_watch', userAgent:'user_agent', createdAt:'created_at', updatedAt:'updated_at' };
+      if (parts.length > 2) {
+        const topField = parts[2];
+        const { data: ex } = await supabase.from(table).select('data').eq('id', id).single();
+        const jsonData = ex?.data || {};
+        if (!jsonData[topField] || typeof jsonData[topField] !== 'object') jsonData[topField] = {};
+        let cur = jsonData[topField];
+        for (let i = 3; i < parts.length; i++) {
+          if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        Object.assign(cur, expanded);
+        await supabase.from(table).upsert({ id, data: jsonData, updated_at: new Date().toISOString() }, { onConflict: 'id' });
+      } else {
+        const sqlUpdates = { id, updated_at: new Date().toISOString() };
+        const extraUpdates = {};
+        for (const [k, v] of Object.entries(expanded)) {
+          const sqlCol = fbToSql[k];
+          if (sqlCol) { sqlUpdates[sqlCol] = v; }
+          else { extraUpdates[k] = v; }
+        }
+        if (Object.keys(extraUpdates).length) {
+          const { data: ex } = await supabase.from(table).select('data').eq('id', id).single();
+          sqlUpdates.data = deepMerge(ex?.data || {}, extraUpdates);
+        }
+        await supabase.from(table).upsert(sqlUpdates, { onConflict: 'id' });
       }
       return;
     }
