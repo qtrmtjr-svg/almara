@@ -1,4 +1,6 @@
 {
+  "framework": null,
+  "buildCommand": "",
   "rewrites": [
     { "source": "/admin/login", "destination": "/api/admin-login" }
   ]
