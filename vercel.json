@@ -11,6 +11,9 @@
   ],
   "rewrites": [
     { "source": "/admin/login", "destination": "/admin/login.html" },
-    { "source": "/settings/:key*.json", "destination": "/api/[...path]" }
+    { "source": "/api/auth/:seg*", "destination": "/api/[...path]" },
+    { "source": "/api/fb/:seg*", "destination": "/api/[...path]" },
+    { "source": "/api/settings/:seg*", "destination": "/api/[...path]" },
+    { "source": "/settings/:seg*.json", "destination": "/api/[...path]" }
   ]
 }
