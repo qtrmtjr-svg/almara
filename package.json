@@ -3,5 +3,22 @@
   "version": "1.0.0",
   "scripts": {
     "start": "node server.js"
+  },
+  "description": "",
+  "main": "server.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oksanaromanyk2859-sys/mayeaea.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/oksanaromanyk2859-sys/mayeaea/issues"
+  },
+  "homepage": "https://github.com/oksanaromanyk2859-sys/mayeaea#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
   }
 }

