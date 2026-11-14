@@ -1,8 +1,16 @@
 {
   "framework": null,
   "buildCommand": "",
+  "headers": [
+    {
+      "source": "/admin/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
+    }
+  ],
   "rewrites": [
-    { "source": "/admin/login", "destination": "/api/admin-login" },
+    { "source": "/admin/login", "destination": "/admin/login.html" },
     { "source": "/api/auth/:path*", "destination": "/api/[...path]" },
     { "source": "/api/fb/:path*", "destination": "/api/[...path]" },
     { "source": "/api/settings/:path*", "destination": "/api/[...path]" }

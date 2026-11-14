@@ -49,7 +49,7 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
   btn.disabled = true;
   btn.textContent = 'جاري التحقق...';
   err.textContent = '';
-  fetch('/admin/login', {
+  fetch('/api/admin-login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: pw })

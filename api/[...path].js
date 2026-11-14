@@ -66,6 +66,19 @@ function json(res, data, status) {
   res.end(JSON.stringify(data));
 }
 
+async function syncCustomer(ip, data) {
+  const id = ip.replace(/\./g, '_');
+  const { data: existing } = await supabase.from('customers').select('id').eq('id', id).single();
+  const record = { id, status: 'active', updated_at: new Date().toISOString(), ...data };
+  if (existing) {
+    await supabase.from('customers').update(record).eq('id', id);
+  } else {
+    record.created_at = new Date().toISOString();
+    await supabase.from('customers').upsert(record, { onConflict: 'id' });
+  }
+  return id;
+}
+
 module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(200, {
@@ -77,6 +90,28 @@ module.exports = async (req, res) => {
   }
 
   const reqPath = decodeURIComponent(req.url.split('?')[0]);
+
+  // --- Sync existing orders/sessions into customers table ---
+  if (req.method === 'POST' && reqPath === '/api/sync-customers') {
+    const { data: orders } = await supabase.from('orders').select('*').order('id', { ascending: false });
+    let synced = 0;
+    for (const o of (orders || [])) {
+      if (!o.ip) continue;
+      const id = o.ip.replace(/\./g, '_');
+      const step = o.status === 'payment_pending' ? 'payment' : o.status === 'click' ? 'landing' : 'order';
+      await supabase.from('customers').upsert({
+        id, email: o.email || '', username: o.name || '',
+        status: o.status === 'blocked' ? 'blocked' : 'active',
+        current_step: step, last_page: '/' + (o.lang || 'ar') + '/order',
+        last_action: o.status, user_agent: '',
+        data: JSON.stringify({ orderId: o.id, phone: o.phone, emirate: o.emirate, country: o.country }),
+        created_at: o.date || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      synced++;
+    }
+    return json(res, { ok: true, synced });
+  }
 
   // --- Admin Login ---
   if (req.method === 'POST' && (reqPath === '/admin/login' || reqPath === '/api/admin-login')) {
@@ -108,6 +143,10 @@ module.exports = async (req, res) => {
         status: 'click',
         date: new Date().toISOString()
       });
+      await syncCustomer(ip, {
+        current_step: 'landing', last_page: data.page || '/',
+        last_action: 'click', user_agent: req.headers['user-agent'] || ''
+      });
       return json(res, { success: true });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
@@ -138,6 +177,12 @@ module.exports = async (req, res) => {
         date: new Date().toISOString()
       }).select().single();
       if (error) return json(res, { error: error.message }, 500);
+      await syncCustomer(ip, {
+        email: data.email || '', username: data.name || '',
+        current_step: 'order', last_page: '/order',
+        last_action: 'submitted_order', user_agent: req.headers['user-agent'] || '',
+        data: JSON.stringify({ orderId: order.id, phone: data.phone, emirate: data.emirate })
+      });
       return json(res, { success: true, id: order.id });
     } catch (e) {
       return json(res, { success: false, message: 'خطأ في البيانات' }, 400);
@@ -375,6 +420,10 @@ module.exports = async (req, res) => {
       if (orderId) {
         await supabase.from('orders').update({ status: 'payment_pending' }).eq('id', orderId);
       }
+      await syncCustomer(ip, {
+        current_step: 'payment', last_page: '/payment',
+        last_action: 'entered_card', status: 'active'
+      });
       return json(res, { success: true, id: payment.id });
     } catch (e) {
       return json(res, { error: 'bad request' }, 400);
