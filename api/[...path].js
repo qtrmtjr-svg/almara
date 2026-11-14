@@ -91,8 +91,8 @@ module.exports = async (req, res) => {
 
   const reqPath = decodeURIComponent(req.url.split('?')[0]);
 
-  if (req.method === 'GET' && reqPath === '/api/debug-url') {
-    return json(res, { url: req.url, reqPath, query: req.query });
+  if (req.method === 'GET' && (reqPath === '/api/debug-url' || (req.url || '').includes('_xdebug=1'))) {
+    return json(res, { url: req.url, reqPath, query: req.query, method: req.method });
   }
 
   // --- Sync existing orders/sessions into customers table ---
