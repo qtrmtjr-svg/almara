@@ -57,7 +57,7 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.success) {
-      document.cookie = 'admin_token=' + data.token + ';path=/;SameSite=Lax';
+      document.cookie = 'admin_token=' + data.token + ';path=/;max-age=604800;SameSite=Lax';
       try { localStorage.setItem('admin_token', data.token); } catch(e) {}
       window.location.href = '/admin/';
     } else {
