@@ -528,73 +528,6 @@ app.post('/api/fb/remove', async (req, res) => {
   }
 });
 
-// ── Auth API (replaces Firebase Auth) ───────────────────────
-
-const authTokens = new Map();
-
-app.post('/api/auth/signin', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'missing fields' });
-    const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
-    const { data: row, error } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
-
-    if (error || !row) return res.status(401).json({ code: 'auth/user-not-found', message: 'User not found' });
-    if (row.status === 'inactive') return res.status(401).json({ code: 'auth/user-disabled', message: 'Account disabled' });
-    if (row.password !== password) return res.status(401).json({ code: 'auth/wrong-password', message: 'Wrong password' });
-
-    const uid = key;
-    const token = crypto.randomBytes(32).toString('hex');
-    authTokens.set(token, { uid, email: email.trim().toLowerCase() });
-    res.json({ uid, email: email.trim().toLowerCase(), token, claims: { role: row.role } });
-  } catch (e) {
-    console.error('auth/signin error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/auth/create', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'missing fields' });
-    const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
-    const { data: existing } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
-
-    if (existing) {
-      if (existing.password !== password) {
-        await supabase.from('dashboard_accounts').update({ password }).eq('id', key);
-      }
-      const token = crypto.randomBytes(32).toString('hex');
-      authTokens.set(token, { uid: key, email: email.trim().toLowerCase() });
-      return res.json({ uid: key, email: email.trim().toLowerCase(), token, existing: true, claims: { role: existing.role } });
-    }
-
-    const uid = key;
-    const token = crypto.randomBytes(32).toString('hex');
-    authTokens.set(token, { uid, email: email.trim().toLowerCase() });
-    res.json({ uid, email: email.trim().toLowerCase(), token });
-  } catch (e) {
-    if (e.message?.includes('already-in-use')) {
-      return res.status(409).json({ code: 'auth/email-already-in-use', message: 'Email already in use' });
-    }
-    console.error('auth/create error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/auth/signout', (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  if (token) authTokens.delete(token);
-  res.json({ ok: true });
-});
-
-app.get('/api/auth/state', (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
-  const user = authTokens.get(token);
-  if (user) return res.json({ uid: user.uid, email: user.email });
-  res.json({ uid: null, email: null });
-});
-
 // ── Settings API (for geo-blocking) ─────────────────────────
 
 app.get(['/api/settings/:key.json', '/settings/:key.json'], async (req, res) => {
@@ -618,26 +551,6 @@ app.put(['/api/settings/:key.json', '/settings/:key.json'], async (req, res) => 
     await supabase.from('settings').upsert({ key, value: merged }, { onConflict: 'key' });
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Setup endpoint ────────────────────────────────────────────
-
-app.post('/api/setup', async (req, res) => {
-  try {
-    const admins = [
-      { id: 'ash@gmail_com', email: 'ash@gmail.com', password: 'Ha1234@@', role: 'superadmin', name: 'المدير العام الأعلى' },
-      { id: 'jafar@admin_com', email: 'jafar@admin.com', password: '112233', role: 'admin', name: 'جعفر' },
-      { id: 'superadmin@admin_com', email: 'superadmin@admin.com', password: 'superadmin12345', role: 'superadmin', name: 'مدير النظام' }
-    ];
-    for (const a of admins) {
-      await supabase.from('dashboard_accounts').upsert({ ...a, status: 'active' }, { onConflict: 'id' });
-    }
-    await supabase.from('settings').upsert({ key: 'geoBlocking', value: { enabled: true, allowedCountries: ['EG'] } }, { onConflict: 'key' });
-    res.json({ ok: true, seeded: admins.length + 1 });
-  } catch (e) {
-    console.error('setup error:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
