@@ -8,11 +8,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://rgbftgsexvyaciqtxpaw.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'Admin1234@@';
-
-if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('Set SUPABASE_URL and SUPABASE_SERVICE_KEY env vars'); process.exit(1); }
+if (!SUPABASE_KEY) console.warn('SUPABASE_SERVICE_KEY not set – API endpoints will fail but static pages will work');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
