@@ -19,6 +19,9 @@
   },
   "homepage": "https://github.com/oksanaromanyk2859-sys/mayeaea#readme",
   "dependencies": {
-    "@supabase/supabase-js": "^2.119.0"
+    "@supabase/supabase-js": "^2.119.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "pg": "^8.23.1"
   }
 }

