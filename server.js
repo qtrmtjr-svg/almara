@@ -10,7 +10,7 @@ app.use(express.json({ limit: '10mb' }));
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const ADMIN_PASS = process.env.ADMIN_PASS || 'Admin1234@@';
+
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('Set SUPABASE_URL and SUPABASE_SERVICE_KEY env vars'); process.exit(1); }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -638,18 +638,6 @@ app.post('/api/setup', async (req, res) => {
     res.json({ ok: true, seeded: admins.length + 1 });
   } catch (e) {
     console.error('setup error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// ── Admin auth ──────────────────────────────────────────────
-
-app.post('/api/admin/login', async (req, res) => {
-  try {
-    const { password } = req.body;
-    if (password === ADMIN_PASS) return res.json({ ok: true });
-    res.status(401).json({ error: 'wrong password' });
-  } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
