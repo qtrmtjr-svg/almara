@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: almara
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        value: https://rgbftgsexvyaciqtxpaw.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

