@@ -701,7 +701,7 @@ const spaRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/clai
 spaRoutes.forEach(route => {
   app.get(route, (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.sendFile(path.join(__dirname, 'admin', 'index.html'));
+    res.sendFile(path.join(__dirname, 'index.html'));
   });
 });
 
@@ -720,7 +720,6 @@ app.get('*', (req, res) => {
   const candidates = [
     path.join(__dirname, cleanPath + '.html'),
     path.join(__dirname, cleanPath, 'index.html'),
-    path.join(__dirname, 'admin', 'index.html')
   ];
   for (const c of candidates) {
     try {
